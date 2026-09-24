@@ -1,0 +1,25 @@
+\begin{table*}[t]
+\centering
+\caption{Additional datasets and backbones.}
+\label{tab:ext}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lllcc}
+\toprule
+Setting & Target & Method & Acc (\%) & FLOPs red.\ sparse (\%) \\
+\midrule
+cifar100 / resnet18 & -- & Dense & -- & 0.0 \\
+cifar100 / resnet18 & 90\% & DEGST & -- & -- \\
+cifar100 / resnet18 & 90\% & RigL & -- & -- \\
+cifar100 / resnet18 & 90\% & GMP & -- & -- \\
+cifar100 / resnet18 & 90\% & DEGST-S & -- & -- \\
+cifar100 / resnet18 & 90\% & Network Slimming & -- & -- \\
+cifar10 / mobilenetv2 & -- & Dense & -- & 0.0 \\
+cifar10 / mobilenetv2 & 90\% & DEGST & -- & -- \\
+cifar10 / mobilenetv2 & 90\% & RigL & -- & -- \\
+cifar10 / mobilenetv2 & 90\% & GMP & -- & -- \\
+cifar10 / mobilenetv2 & 90\% & DEGST-S & -- & -- \\
+cifar10 / mobilenetv2 & 90\% & Network Slimming & -- & -- \\
+\bottomrule
+\end{tabular}}
+\par\smallskip\footnotesize Mean $\pm$ std over 3 seeds; $^{*}$ marks single-seed cells (no std); -- = not yet run. Accuracy is final-epoch test accuracy.
+\end{table*}

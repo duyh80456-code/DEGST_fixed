@@ -1,0 +1,20 @@
+\begin{table*}[t]
+\centering
+\caption{Training cost on one GPU (CIFAR-10, ResNet-18, 200 epochs, 90\% target). Topology-update time includes score computation, prune/regrow and mask bookkeeping; entropy time is the part spent in the histogram hooks.}
+\label{tab:cost}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccc}
+\toprule
+Method & s/epoch & GPU-hours & Topology updates (\% of time) & Entropy histograms (\% of time) \\
+\midrule
+Dense & -- & -- & -- & -- \\
+DEGST & -- & -- & -- & -- \\
+RigL & -- & -- & -- & -- \\
+GMP & -- & -- & -- & -- \\
+Movement & -- & -- & -- & -- \\
+DEGST-S & -- & -- & -- & -- \\
+DEGST-Hybrid & -- & -- & -- & -- \\
+\bottomrule
+\end{tabular}}
+\par\smallskip\footnotesize Mean $\pm$ std over 3 seeds; $^{*}$ marks single-seed cells (no std); -- = not yet run. Accuracy is final-epoch test accuracy.
+\end{table*}

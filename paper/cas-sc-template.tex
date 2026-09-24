@@ -1,0 +1,181 @@
+%% 
+%% Copyright 2019-2024 Elsevier Ltd
+%% 
+%% This file is part of the 'CAS Bundle'.
+%% --------------------------------------
+%% 
+%% It may be distributed under the conditions of the LaTeX Project Public
+%% License, either version 1.3c of this license or (at your option) any
+%% later version.  The latest version of this license is in
+%%    http://www.latex-project.org/lppl.txt
+%% and version 1.3c or later is part of all distributions of LaTeX
+%% version 1999/12/01 or later.
+%% 
+%% The list of all files belonging to the 'CAS Bundle' is
+%% given in the file `manifest.txt'.
+%% 
+%% Template article for cas-sc documentclass for 
+%% double column output.
+
+\documentclass[a4paper]{cas-sc}
+\usepackage{amssymb}
+%% The amsmath package provides various useful equation environments.
+\usepackage{amsmath}
+\usepackage{multirow}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{xcolor}
+
+% Revision marker: every \TODO must be resolved from the re-run results before submission.
+% Set \revisionfalse to hide them in a draft for co-authors (they must still be resolved).
+\newif\ifrevision \revisiontrue
+\newcommand{\TODO}[1]{\ifrevision\textcolor{red}{[TODO: #1]}\fi}
+
+
+
+
+
+% If the frontmatter runs over more than one page
+% use the longmktitle option.
+
+%\documentclass[a4paper,fleqn,longmktitle]{cas-sc}
+
+%\usepackage[numbers]{natbib}
+%\usepackage[authoryear]{natbib}
+\usepackage[numbers]{natbib}
+
+%%%Author macros
+\def\tsc#1{\csdef{#1}{\textsc{\lowercase{#1}}\xspace}}
+\tsc{WGM}
+\tsc{QE}
+%%%
+
+% Uncomment and use as if needed
+%\newtheorem{theorem}{Theorem}
+%\newtheorem{lemma}[theorem]{Lemma}
+%\newdefinition{rmk}{Remark}
+%\newproof{pf}{Proof}
+%\newproof{pot}{Proof of Theorem \ref{thm}}
+
+\begin{document}
+\let\WriteBookmarks\relax
+\def\floatpagepagefraction{1}
+\def\textpagefraction{.001}
+% Short title
+\shorttitle{DEGST: Dynamic Entropy-Guided Sparse Training}    
+
+\shortauthors{Ha Vu et al.}  
+
+% Main title of the paper
+\title [mode = title]{Dynamic Entropy-Guided Sparse Training for Efficient Neural Network Compression}  
+
+
+
+% First author
+\author[label1]{Minh-Duc Ha Vu}
+\credit{Conceptualization, Methodology, Software}
+\ead{havuminhduc_t67@hus.edu.vn}
+
+\author[label1]{Bao Phan Dinh Thai}
+\credit{Methodology, Validation}
+\ead{phandinhthaibao_t67@hus.edu.vn}
+
+\author[label2]{Hung Tran Duy}
+\credit{Validation, Investigation}
+\ead{24021506@vnu.edu.vn}
+
+\author[label3]{Quyen Quach Thai}
+\credit{Formal analysis, Investigation \& review}
+\ead{quyenqt@vnu.edu.vn}
+
+\author[label3]{Hai Le Xuan}
+\credit{Data curation \& reivew}
+\ead{hailx@vnu.edu.vn}
+
+\author[label3]{Van-Tien Giap\cormark[1]}
+\credit{Supervision, Writing - review \& editing}
+\ead{tiengv@vnu.edu.vn}
+
+\cortext[1]{Corresponding author}
+
+% Affiliations
+\affiliation[label1]{organization={VNU University of Science},
+            city={Hanoi},
+            country={Vietnam}}
+
+\affiliation[label2]{organization={VNU University of Engineering and Technology},
+            city={Hanoi},
+            country={Vietnam}}
+
+\affiliation[label3]{organization={VNU International School},
+            city={Hanoi},
+            country={Vietnam}}
+
+
+% For a title note without a number/mark
+%\nonumnote{}
+
+% Here goes the abstract
+\begin{abstract}
+Dynamic sparse training methods such as RigL update the sparse topology during training, dropping connections by weight magnitude and regrowing them by gradient magnitude. We ask whether the entropy of the activations a weight reads adds useful information to the drop decision. Dynamic Entropy-Guided Sparse Training (DEGST) scores each weight by the histogram entropy of its input channel multiplied by its magnitude, $H(A)\cdot|w|$, inside an otherwise standard prune-and-regrow loop. A channel-level variant, DEGST-S, applies the entropy score to coupled channel groups and removes the selected channels physically, and a hybrid variant combines both levels under one weight budget.
+
+To isolate the contribution of entropy, we keep the training loop fixed and change only the drop criterion ($|w|$, $H(A)$, $H(A)\cdot|w|$). We then compare against RigL, gradual magnitude pruning, SNIP, movement pruning, Network Slimming, FPGM and an AutoPruner-style baseline. All methods keep the same number of weights, share one training recipe without method-specific tuning, and are run with three seeds at the main operating points. Accuracy is plotted against both non-zero and actually executed FLOPs, on CIFAR-10 with ResNet-18, with additional runs on CIFAR-100 and on MobileNetV2.
+
+\TODO{State the C0 outcome in one sentence with numbers, e.g. ``At 90\% sparsity on CIFAR-10, $H(A)\cdot|w|$ changes accuracy by $X\pm Y$ points relative to $|w|$ in the same loop'', and say plainly whether this exceeds seed variance.} \TODO{State where DEGST, DEGST-S and the hybrid lie relative to the Pareto front at equal FLOPs, naming any baseline that dominates them.} Unstructured sparsity, including that of DEGST, gives no measurable speed-up with dense GPU kernels; only the channel-level variants reduce latency.
+\end{abstract}
+
+% Use if graphical abstract is present
+%\begin{graphicalabstract}
+%\includegraphics{}
+%\end{graphicalabstract}
+
+% Research highlights
+% \begin{highlights}
+% \item DEGST introduces entropy-guided dynamic sparse training.
+% \item Global prune-regrow enables adaptive topology optimization.
+% \item A unified criterion bridges unstructured and structured pruning.
+% \item Hybrid sparsity improves deployment efficiency and throughput.
+% \item Experiments explore the accuracy-efficiency trade-offs across different structural granularities.
+% \end{highlights}
+
+
+% Keywords
+% Each keyword is seperated by 
+\begin{keywords}
+ Dynamic sparse training\sep Neural network pruning\sep Activation entropy\sep Structured sparsity\sep Unstructured sparsity\sep Model compression
+\end{keywords}
+
+
+
+\maketitle
+
+% Main text
+\input{menu/introduction}
+\input{menu/related}
+\input{menu/method}
+\input{menu/experiments}
+\input{menu/discussion}
+
+% To print the credit authorship contribution details
+\printcredits
+
+%% Loading bibliography style file
+%\bibliographystyle{model1-num-names}
+\bibliographystyle{cas-model2-names}
+
+% Loading bibliography database
+\bibliography{cas-refs}
+
+% Biography
+%\bio{}
+% Here goes the biography details.
+%\endbio
+
+%\bio{pic1}
+% Here goes the biography details.
+%\endbio
+
+\end{document}
+

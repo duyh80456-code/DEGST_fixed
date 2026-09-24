@@ -1,0 +1,24 @@
+\begin{table*}[t]
+\centering
+\caption{Inference latency (median ms per forward pass) and throughput (images/s = batch / median latency) at 90\% target sparsity, CIFAR-10 / ResNet-18. Both numbers of a pair come from the same measurement.}
+\label{tab:speed}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccccc}
+\toprule
+Method & Lat.\ b=1 & Thr.\ b=1 & Lat.\ b=128 & Thr.\ b=128 & Lat.\ b=1024 & Thr.\ b=1024 \\
+\midrule
+Dense & -- & -- & -- & -- & -- & -- \\
+DEGST & -- & -- & -- & -- & -- & -- \\
+RigL & -- & -- & -- & -- & -- & -- \\
+GMP & -- & -- & -- & -- & -- & -- \\
+SNIP & -- & -- & -- & -- & -- & -- \\
+Movement & -- & -- & -- & -- & -- & -- \\
+DEGST-S & -- & -- & -- & -- & -- & -- \\
+Network Slimming & -- & -- & -- & -- & -- & -- \\
+FPGM & -- & -- & -- & -- & -- & -- \\
+AutoPruner$^\dagger$ & -- & -- & -- & -- & -- & -- \\
+DEGST-Hybrid & -- & -- & -- & -- & -- & -- \\
+\bottomrule
+\end{tabular}}
+\par\smallskip\footnotesize Mean $\pm$ std over 3 seeds; $^{*}$ marks single-seed cells (no std); -- = not yet run. Accuracy is final-epoch test accuracy.
+\end{table*}

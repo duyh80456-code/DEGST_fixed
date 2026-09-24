@@ -1,0 +1,31 @@
+\section{Discussion}
+\label{sec:discussion}
+
+\paragraph{What the ablation isolates.} DEGST differs from RigL in two ways: the drop score, and the use of a dense warm-up with a score-based initial mask instead of a random ERK mask. Configurations A--C share the second difference and vary only the first, so Table~\ref{tab:c0} measures the effect of entropy alone. The comparison with RigL in Table~\ref{tab:main} measures the two differences together. \TODO{Interpret both comparisons. If entropy does not help, say which of the two differences (if any) accounts for any gap to RigL.}
+
+\paragraph{Why sparsity and FLOPs diverge.} At equal parameter sparsity, the methods in Table~\ref{tab:main} differ widely in FLOPs because they allocate sparsity differently across layers. Global rankings concentrate pruning in the wide, low-resolution late layers, while layer-uniform schedules prune every layer at the same rate. Neither choice is inherently better. However, results reported at equal sparsity alone favour whichever allocation removes more FLOPs, or hide that it does. Reporting accuracy against both FLOPs definitions (Fig.~\ref{fig:pareto}) removes this ambiguity.
+
+\paragraph{Structured and hybrid variants.} DEGST-S and the hybrid are the only proposed variants that reduce executed FLOPs and latency on standard GPUs. The fair comparison for them is therefore with the structured baselines at equal executed FLOPs (right panel of Fig.~\ref{fig:pareto}), not with unstructured methods at equal sparsity. \TODO{State where DEGST-S and the hybrid lie relative to Slimming, FPGM and AutoPruner$^\dagger$, and whether the hybrid's unstructured stage adds accuracy at a given executed-FLOPs level, given that it cannot add speed.}
+
+\TODO{Remove or rewrite this paragraph once results are in; keep only interpretations that the tables support.}
+
+\section{Limitations}
+\label{sec:limitations}
+
+\begin{itemize}
+    \item \textbf{Scale.} All experiments use $32\times32$ images (CIFAR-10/100). Rankings of sparse-training methods on CIFAR do not necessarily carry over to ImageNet \cite{deng2009imagenet}, where DST methods are usually evaluated \cite{evci2020rigging}, and the entropy estimate may behave differently on larger feature maps. We make no claim beyond CIFAR scale.
+    \item \textbf{Speed measurements.} For CIFAR-sized inputs, batch-1 latency on a modern GPU is dominated by kernel-launch overhead. Unstructured sparsity, including DEGST's, gives no speed-up with the dense kernels we use. Our latency results therefore concern the structured variants only and a single GPU type; we did not evaluate sparse kernels, 2:4 sparsity, CPUs or edge accelerators.
+    \item \textbf{What entropy measures.} The marginal entropy of an input channel describes the diversity of its values, not the effect of removing a weight on the loss. \TODO{Keep the following sentence only if it matches Table~\ref{tab:c0}: ``In our experiments, entropy did not improve over weight magnitude beyond seed variance.''}
+    \item \textbf{Tuning and statistics.} No method was tuned: all share learning rate 0.1, and the other baseline hyper-parameters follow the original papers. Per-method tuning could close or widen the gaps. Three seeds give only coarse uncertainty estimates, and the extra Pareto points and sensitivity variations have a single seed.
+    \item \textbf{Compute.} All experiments were designed to fit a single consumer GPU. This is why we do not include ImageNet-scale runs, a third backbone, or seeds beyond three.
+    \item \textbf{Baseline fidelity.} All baselines are our re-implementations inside a shared training loop. The AutoPruner-style baseline uses input-independent gates and is a simplification of the original method.
+\end{itemize}
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+We introduced DEGST, a dynamic sparse training method that weights the magnitude-based drop criterion of RigL by the histogram entropy of each weight's input channel, and its channel-level and hybrid variants, which remove channels physically. We evaluated them with an ablation that isolates the entropy term, at matched weight budgets, with one shared training recipe and three seeds, against both non-zero and executed FLOPs.
+
+\TODO{State the findings plainly and only as far as the tables support them: (1) the C0 outcome; (2) whether DEGST lies on or below the accuracy--FLOPs Pareto front, and which method dominates it where it is below; (3) the executed-FLOPs and latency comparison of DEGST-S and the hybrid with the structured baselines; (4) the entropy overhead. Do not claim higher FLOPs reduction than the baselines at equal sparsity: the pre-revision results showed the opposite.}
+
+Future work includes evaluation at ImageNet scale, sparse-kernel and 2:4 execution of the unstructured variants, and drop criteria that combine activation statistics with an explicit estimate of the loss increase, such as Fisher- or Taylor-weighted perturbation scores.

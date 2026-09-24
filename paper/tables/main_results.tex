@@ -1,0 +1,44 @@
+\begin{table*}[t]
+\centering
+\caption{CIFAR-10 / resnet18: all methods at the same weight budget. Weights = conv/linear weights stored in the final architecture (physically removed channels are not counted). FLOPs red.\ (sparse) counts only non-zero weights; FLOPs red.\ (dense) counts the architecture as executed by dense kernels. Latency at batch 1 and throughput at batch 1024 come from the protocol of Sec.~\ref{sec:speed}.}
+\label{tab:main}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lllccccccc}
+\toprule
+Target & Method & Type & Acc (\%) & Sparsity (\%) & Weights & FLOPs red.\ sparse (\%) & FLOPs red.\ dense (\%) & Latency b=1 (ms) & Throughput b=1024 (img/s) \\
+\midrule
+-- & Dense &  & -- & 0.00 & -- & 0.0 & 0.0 & -- & -- \\
+50\% & DEGST & U & -- & -- & -- & -- & -- & -- & -- \\
+50\% & RigL & U & -- & -- & -- & -- & -- & -- & -- \\
+50\% & GMP & U & -- & -- & -- & -- & -- & -- & -- \\
+50\% & SNIP & U & -- & -- & -- & -- & -- & -- & -- \\
+50\% & Movement & U & -- & -- & -- & -- & -- & -- & -- \\
+50\% & DEGST-S & S & -- & -- & -- & -- & -- & -- & -- \\
+50\% & Network Slimming & S & -- & -- & -- & -- & -- & -- & -- \\
+50\% & FPGM & S & -- & -- & -- & -- & -- & -- & -- \\
+50\% & AutoPruner$^\dagger$ & S & -- & -- & -- & -- & -- & -- & -- \\
+50\% & DEGST-Hybrid & H & -- & -- & -- & -- & -- & -- & -- \\
+75\% & DEGST & U & -- & -- & -- & -- & -- & -- & -- \\
+75\% & RigL & U & -- & -- & -- & -- & -- & -- & -- \\
+75\% & GMP & U & -- & -- & -- & -- & -- & -- & -- \\
+75\% & SNIP & U & -- & -- & -- & -- & -- & -- & -- \\
+75\% & Movement & U & -- & -- & -- & -- & -- & -- & -- \\
+75\% & DEGST-S & S & -- & -- & -- & -- & -- & -- & -- \\
+75\% & Network Slimming & S & -- & -- & -- & -- & -- & -- & -- \\
+75\% & FPGM & S & -- & -- & -- & -- & -- & -- & -- \\
+75\% & AutoPruner$^\dagger$ & S & -- & -- & -- & -- & -- & -- & -- \\
+75\% & DEGST-Hybrid & H & -- & -- & -- & -- & -- & -- & -- \\
+90\% & DEGST & U & -- & -- & -- & -- & -- & -- & -- \\
+90\% & RigL & U & -- & -- & -- & -- & -- & -- & -- \\
+90\% & GMP & U & -- & -- & -- & -- & -- & -- & -- \\
+90\% & SNIP & U & -- & -- & -- & -- & -- & -- & -- \\
+90\% & Movement & U & -- & -- & -- & -- & -- & -- & -- \\
+90\% & DEGST-S & S & -- & -- & -- & -- & -- & -- & -- \\
+90\% & Network Slimming & S & -- & -- & -- & -- & -- & -- & -- \\
+90\% & FPGM & S & -- & -- & -- & -- & -- & -- & -- \\
+90\% & AutoPruner$^\dagger$ & S & -- & -- & -- & -- & -- & -- & -- \\
+90\% & DEGST-Hybrid & H & -- & -- & -- & -- & -- & -- & -- \\
+\bottomrule
+\end{tabular}}
+\par\smallskip\footnotesize Mean $\pm$ std over 3 seeds; $^{*}$ marks single-seed cells (no std); -- = not yet run. Accuracy is final-epoch test accuracy. Type: U = unstructured, S = structured, H = hybrid. $^\dagger$AutoPruner-style learned channel gates (input-independent simplification).
+\end{table*}

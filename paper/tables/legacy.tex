@@ -1,0 +1,23 @@
+\begin{table*}[t]
+\centering
+\caption{Pre-revision pipelines re-run with the current code (CIFAR-10, ResNet-18): the first DEGST implementation (ELTP score) and one-shot pruning after 50 dense epochs with lottery-ticket rewind and 30 fine-tuning epochs.}
+\label{tab:legacy}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llccc}
+\toprule
+Target & Method & Acc (\%) & Sparsity (\%) & FLOPs red.\ sparse (\%) \\
+\midrule
+50\% & DEGST v0 (pre-revision) & -- & -- & -- \\
+50\% & Magnitude + LTH rewind & -- & -- & -- \\
+50\% & Layer-wise magnitude + LTH rewind & -- & -- & -- \\
+50\% & SNIP (trained) + LTH rewind & -- & -- & -- \\
+50\% & ELTP (init) + LTH rewind & -- & -- & -- \\
+90\% & DEGST v0 (pre-revision) & -- & -- & -- \\
+90\% & Magnitude + LTH rewind & -- & -- & -- \\
+90\% & Layer-wise magnitude + LTH rewind & -- & -- & -- \\
+90\% & SNIP (trained) + LTH rewind & -- & -- & -- \\
+90\% & ELTP (init) + LTH rewind & -- & -- & -- \\
+\bottomrule
+\end{tabular}}
+\par\smallskip\footnotesize Mean $\pm$ std over 3 seeds; $^{*}$ marks single-seed cells (no std); -- = not yet run. Accuracy is final-epoch test accuracy.
+\end{table*}

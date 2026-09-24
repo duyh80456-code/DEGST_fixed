@@ -1,0 +1,22 @@
+\begin{table*}[t]
+\centering
+\caption{Importance criteria inside one prune/regrow loop (CIFAR-10, ResNet-18).}
+\label{tab:criteria}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llcc}
+\toprule
+Target & Criterion & Acc (\%) & FLOPs red.\ sparse (\%) \\
+\midrule
+90\% & DEGST loop, $|w|$ only & -- & -- \\
+90\% & DEGST, $H(A)$ only & -- & -- \\
+90\% & DEGST & -- & -- \\
+90\% & Taylor $|w g|$ & -- & -- \\
+90\% & Fisher $(wg)^2/2$ & -- & -- \\
+90\% & Gradient $|g|$ & -- & -- \\
+90\% & ELTP $|wg|(1-E/H_{\max})$ & -- & -- \\
+90\% & RigL & -- & -- \\
+90\% & Movement & -- & -- \\
+\bottomrule
+\end{tabular}}
+\par\smallskip\footnotesize Mean $\pm$ std over 3 seeds; $^{*}$ marks single-seed cells (no std); -- = not yet run. Accuracy is final-epoch test accuracy.
+\end{table*}

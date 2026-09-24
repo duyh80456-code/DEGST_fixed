@@ -1,0 +1,21 @@
+\begin{table*}[t]
+\centering
+\caption{Sensitivity of DEGST (CIFAR-10, ResNet-18, 90\%) to one hyper-parameter at a time. The default row has three seeds; each variation has one seed and should be read against the default row's std.}
+\label{tab:sensitivity}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lc}
+\toprule
+Setting & Acc (\%) \\
+\midrule
+default (bins 30, $\Delta T$ 400, $\alpha$ 0.2, mean) & -- \\
+bins = 10 & -- \\
+bins = 100 & -- \\
+$\Delta T$ = 100 & -- \\
+$\Delta T$ = 1000 & -- \\
+$\alpha$ = 0.1 & -- \\
+$\alpha$ = 0.3 & -- \\
+reduction = median & -- \\
+\bottomrule
+\end{tabular}}
+\par\smallskip\footnotesize Mean $\pm$ std over 3 seeds; $^{*}$ marks single-seed cells (no std); -- = not yet run. Accuracy is final-epoch test accuracy.
+\end{table*}
