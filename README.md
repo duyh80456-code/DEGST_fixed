@@ -35,10 +35,25 @@ revision in `archive/paper_before_revision.zip`.
 | `experiments/plan.py` | all suites of the revision plan; resumable runner, sharding over GPUs |
 | `aggregate.py` | mean ± std tables → `paper/tables/*.tex`, Pareto plot → `paper/Figures/`, C0 decision |
 | `bench.py` | re-time saved checkpoints on another GPU |
+| `analysis/score_overlap.py` | replays a prune step of the loop with every criterion: drop-set overlap, allocation between layers, what H measures (zero share) |
 | `tests/test_degst.py` | unit tests; `--smoke` trains every method briefly on random data |
 | `archive/` | pre-revision code and paper (zip, read-only reference) |
 
-## Order of work
+## Order of work (after C0)
+
+C0 was negative: H(A)·|w| does not beat |w| (−0.04 pp), and H(A) alone loses 2.45 pp. The paper is
+now a controlled study of drop criteria in DST. Hypotheses, suites and decision rules are fixed in
+[`experiments/DESIGN.md`](experiments/DESIGN.md), written before the new runs.
+
+```bash
+pip install scipy                            # aggregate.py: Welch CIs, TOST, Holm, Spearman
+python -m experiments.plan run study         # one GPU, 92 runs ~34 h, seed 0 of every cell first (~10 h)
+python -m experiments.plan run regimes_tin   # optional: Tiny ImageNet 90% (~29 h)
+python analysis/score_overlap.py results/checkpoints/*_ep*.pt results/midckpt/checkpoints/*_ep*.pt
+python aggregate.py            # + paper/tables/regimes.tex, allocation.tex, Figures/divergence_accuracy.pdf
+```
+
+## Original order of work (before C0)
 
 The plan is sized for one consumer GPU: 172 core runs (~34k epochs). There is no per-method
 learning-rate tuning; every method uses lr 0.1. Main points (50/75/90%), C0 and the extension use
@@ -70,6 +85,17 @@ If C0 is negative, run `criteria` (27 runs; route 1: a study of importance crite
 prune/regrow loop; `dst_taylor` and `dst_fisher` are also the perturbation-aware scores of route 2).
 `legacy` (10 runs, optional) re-runs the pre-revision pipelines for comparison with the old numbers.
 
+## Datasets
+
+`--dataset cifar10 | cifar100 | tinyimagenet` (plus `fake` for smoke tests). All three are
+downloaded to `--data-root` (default `./data`) on first use. Tiny ImageNet (200 classes, 64×64,
+~240 MB from `cs231n.stanford.edu`) uses its official validation set as the test set; the
+backbones are the same CIFAR-style networks, so a 64×64 input costs ~4× the FLOPs.
+
+```bash
+python train.py --method degst --dataset tinyimagenet --sparsity 0.9 --seed 0
+```
+
 ## Definitions that the numbers depend on
 
 - **Sparsity** = 1 − (non-zero conv/linear weights) / (conv/linear weights of the dense model).
@@ -99,6 +125,16 @@ python -m experiments.plan run quick  # 5 epochs on real CIFAR-10 for dense/degs
 ```
 
 ## Hướng dẫn nhanh (tiếng Việt)
+
+**Sau C0 (âm tính):** bài chuyển thành nghiên cứu các tiêu chí cắt trong DST. Thiết kế, giả thuyết và
+quy tắc quyết định nằm trong `experiments/DESIGN.md`. Trên 1 GPU chỉ cần `python -m experiments.plan run study`
+(92 run, khoảng 34 giờ trên RTX 3090, dừng rồi chạy lại được), tùy chọn thêm `regimes_tin`
+(Tiny ImageNet, khoảng 29 giờ). `study` chạy seed 0 của mọi ô trước (khoảng 10 giờ) để phát hiện lỗi sớm.
+Cần `pip install scipy` cho phần thống kê (Welch, TOST, Holm).
+`--parallel N` vẫn có nhưng trên RTX 3090 không nhanh hơn (đã đo: 3 run song song ≈ 22.7 s/epoch mỗi run). Sau đó chạy `analysis/score_overlap.py` trên các checkpoint `_ep50`/`_ep100`
+và `python aggregate.py`.
+
+**Kế hoạch ban đầu (trước C0):**
 
 1. Cài đặt: `pip install -r requirements.txt`, kiểm tra bằng `python tests/test_degst.py`.
 2. Chạy **C0 trước**: `python -m experiments.plan run c0`, rồi `python aggregate.py`. Dòng `C0: ...`

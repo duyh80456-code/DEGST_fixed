@@ -12,6 +12,7 @@ import os
 import torch
 
 from degst import metrics
+from degst.data import IMAGE_SIZE
 
 
 def main():
@@ -28,8 +29,9 @@ def main():
     for ck in a.checkpoints:
         model = torch.load(ck, map_location=a.device, weights_only=False)
         rid = os.path.splitext(os.path.basename(ck))[0]
-        out['runs'][rid] = {**metrics.param_counts(model), **metrics.flops(model),
-                            'speed': metrics.measure_speed(model, batches, a.device, a.warmup, a.iters)}
+        hw = IMAGE_SIZE.get(rid.split('_')[0], 32)   # run ids start with the dataset name
+        out['runs'][rid] = {**metrics.param_counts(model), **metrics.flops(model, (1, 3, hw, hw)),
+                            'speed': metrics.measure_speed(model, batches, a.device, a.warmup, a.iters, hw)}
         s = out['runs'][rid]['speed']
         print(rid, {b: round(v.get('latency_ms_median', float('nan')), 3) for b, v in s.items()})
     name = proto['device'].replace(' ', '_')

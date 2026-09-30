@@ -3,3 +3,4 @@ torchvision>=0.16
 torch-pruning>=1.5      # DepGraph: physical channel removal for structured baselines and DEGST-S
 numpy>=1.24
 matplotlib>=3.7         # aggregate.py (Pareto figures)
+scipy>=1.10             # aggregate.py (Welch tests, TOST, Spearman)

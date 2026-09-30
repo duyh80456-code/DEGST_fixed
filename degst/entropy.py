@@ -32,6 +32,35 @@ def channel_entropy(x: torch.Tensor, bins: int = 30, eps: float = 1e-8, max_samp
     return -(p * torch.log(p + eps)).sum(1)
 
 
+@torch.no_grad()
+def channel_entropy_robust(x: torch.Tensor, bins: int = 30, eps: float = 1e-8, max_samples: int = 4096,
+                           q: float = 0.01) -> torch.Tensor:
+    """Entropy of the *non-zero* values of each channel, equal-width bins over the channel's
+    [q, 1-q] quantile range (values outside are clamped into the end bins).
+
+    Removes the two things ``channel_entropy`` mostly measures after a ReLU: the share of exact
+    zeros (one bin holding most of the mass) and single outliers stretching the bin range. The
+    range is estimated from an evenly strided subsample of ``max_samples`` values (no RNG, so the
+    global random state and data order are untouched). A channel without non-zero values has H = 0.
+    """
+    c = x.shape[1]
+    xc = x.detach().float().transpose(0, 1).reshape(c, -1)
+    nz = xc != 0
+    n = xc.shape[1]
+    sub = xc if n <= max_samples else xc[:, torch.linspace(0, n - 1, max_samples, device=xc.device).long()]
+    sub = sub.masked_fill(sub == 0, float('nan'))
+    lo = torch.nanquantile(sub, q, dim=1, keepdim=True).nan_to_num(0.0)
+    hi = torch.nanquantile(sub, 1 - q, dim=1, keepdim=True).nan_to_num(0.0)
+    b = ((xc - lo) / (hi - lo + eps) * bins).long().clamp_(0, bins - 1)
+    b += torch.arange(c, device=x.device).unsqueeze(1) * bins
+    counts = torch.bincount(b.flatten(), weights=nz.flatten().float(), minlength=c * bins).view(c, bins)
+    p = counts / counts.sum(1, keepdim=True).clamp_min(1)
+    return -(p * torch.log(p + eps)).sum(1)
+
+
+ESTIMATORS = {'histogram': channel_entropy, 'robust': channel_entropy_robust}
+
+
 class EntropyTracker:
     """Records per-channel entropy of module inputs (``mode='input'``) or outputs.
 
@@ -43,8 +72,9 @@ class EntropyTracker:
     """
 
     def __init__(self, modules: Dict[str, nn.Module], mode='input', bins=30, reduction='mean',
-                 max_samples=0, gate_fn=None):
+                 max_samples=0, gate_fn=None, estimator='histogram'):
         self.bins, self.reduction, self.max_samples = bins, reduction, max_samples
+        self.estimator = estimator
         self.active = False
         self.buf: Dict[str, List[torch.Tensor]] = {k: [] for k in modules}
         self.seconds = 0.0
@@ -63,7 +93,11 @@ class EntropyTracker:
         if sync:
             torch.cuda.synchronize()
         t0 = time.perf_counter()
-        self.buf[name].append(channel_entropy(x, self.bins, max_samples=self.max_samples))
+        if self.estimator == 'robust':
+            h = channel_entropy_robust(x, self.bins, max_samples=self.max_samples or 4096)
+        else:
+            h = channel_entropy(x, self.bins, max_samples=self.max_samples)
+        self.buf[name].append(h)
         if sync:
             torch.cuda.synchronize()
         self.seconds += time.perf_counter() - t0

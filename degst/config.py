@@ -46,6 +46,7 @@ class RunConfig:
     entropy_batches: int = 4         # training batches pooled per update
     entropy_reduction: str = 'mean'  # mean | median over those batches
     entropy_max_samples: int = 0     # per-channel subsample (0 = all values)
+    entropy_estimator: str = 'histogram'  # histogram (C0) | robust (non-zero values, quantile range)
     # structured
     channel_criterion: str = 'entropy'   # entropy | bn_gamma | fpgm | l1 | learned
     channel_schedule: str = 'gradual'    # gradual | oneshot
@@ -57,6 +58,7 @@ class RunConfig:
     hybrid_struct_share: float = 0.5     # structured stage removes this share of the target weights
     # evaluation / bookkeeping
     val_size: int = 0                    # >0: hold out from train and evaluate on it (tuning only)
+    eval_every: int = 10                 # evaluate every n epochs (+ first and last); final acc = last epoch
     speed_batches: Tuple[int, ...] = (1, 128, 1024)
     speed_warmup: int = 50
     speed_iters: int = 200
@@ -64,6 +66,7 @@ class RunConfig:
     num_workers: int = 8
     out_dir: str = 'results'
     save_checkpoint: bool = True
+    checkpoint_epochs: Tuple[int, ...] = ()   # extra mid-training checkpoints (model + masks), for analysis
     tag: str = ''                        # free-form suffix, e.g. suite name
     overrides: dict = field(default_factory=dict)  # recorded for the run id
 
@@ -93,6 +96,10 @@ METHODS = {
     'dst_fisher': dict(kind='dst', criterion='fisher'),
     'dst_gradient': dict(kind='dst', criterion='gradient'),
     'dst_eltp': dict(kind='dst', criterion='eltp'),      # pre-revision score in the current loop
+    'dst_random': dict(kind='dst', criterion='random'),  # control: random drop, same loop and regrowth
+    # exploratory (added after the C0 diagnostics, before the study's results): DEGST with an entropy
+    # estimate that ignores exact zeros and outliers (degst/entropy.py: channel_entropy_robust)
+    'degst_robust': dict(kind='dst', criterion='entropy_magnitude', entropy_estimator='robust'),
 
     # --- unstructured baselines, each with its original paper's conventions
     'rigl': dict(kind='dst', criterion='magnitude', allocation='erk', init='random', warmup_epochs=0,
@@ -140,7 +147,8 @@ def make_config(method: str, **kw) -> RunConfig:
     if bad:
         raise KeyError(f'unknown config fields {bad}')
     identity = {'dataset', 'model', 'sparsity', 'seed', 'data_root', 'num_workers', 'out_dir',
-                'save_checkpoint', 'tag', 'speed_batches', 'speed_warmup', 'speed_iters', 'val_size'}
+                'save_checkpoint', 'checkpoint_epochs', 'tag', 'speed_batches', 'speed_warmup', 'speed_iters',
+                'val_size', 'eval_every'}
     overrides = {k: v for k, v in user.items() if k not in identity and base.get(k, getattr(RunConfig, k, None)) != v}
     cfg = RunConfig(method=method, **{**base, **user})
     cfg.overrides = overrides

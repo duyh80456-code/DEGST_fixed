@@ -1,0 +1,19 @@
+\begin{table*}[t]
+\centering
+\caption{C0 criteria with global and layer-uniform allocation (CIFAR-10, ResNet-18, 90\%). With uniform allocation every layer keeps the same density, so differences can only come from which weights are dropped inside a layer.}
+\label{tab:allocation}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llcccccc}
+\toprule
+Allocation & Drop criterion & Acc (\%) & $\Delta$ vs $|w|$ [95\% CI] (pp) & $p_{\mathrm{Holm}}$ & Equiv. & FLOPs red.\ sparse (\%) & Seeds \\
+\midrule
+global & $|w|$ & 95.03 $\pm$ 0.07 & -- & -- & -- & 75.2 $\pm$ 1.5 & 3 \\
+global & $H(A)$ & 92.44 $\pm$ 0.40 & -2.59 [-3.55, -1.63] & 0.020 & no & 86.0 $\pm$ 0.7 & 3 \\
+global & $H(A)\cdot|w|$ (DEGST) & 95.30 $\pm$ 0.21 & +0.27 [-0.20, +0.74] & 0.288 & no & 73.6 $\pm$ 0.7 & 3 \\
+uniform & $|w|$ & 94.43 $\pm$ 0.08 & -- & -- & -- & 90.0 $\pm$ 0.0 & 3 \\
+uniform & $H(A)$ & 91.63 $\pm$ 0.37 & -2.80 [-3.67, -1.93] & 0.017 & no & 90.2 $\pm$ 0.0 & 3 \\
+uniform & $H(A)\cdot|w|$ (DEGST) & 94.72 $\pm$ 0.23 & +0.29 [-0.21, +0.79] & 0.288 & no & 90.0 $\pm$ 0.0 & 3 \\
+\bottomrule
+\end{tabular}}
+\par\smallskip\footnotesize Mean $\pm$ std over 3 seeds; $^{*}$ marks single-seed cells (no std); -- = not yet run. Accuracy is final-epoch test accuracy. $\Delta$: difference of means to the $|w|$ row of the same block, with its 95\% Welch CI; $p_{\mathrm{Holm}}$: two-sided Welch test, Holm-adjusted over all confirmatory comparisons of the table; Equiv.: TOST at $\pm$0.3 pp (CIFAR-10) / $\pm$0.5 pp (CIFAR-100, Tiny ImageNet), $\alpha$ = 0.05. Exploratory rows are not in the Holm family (unadjusted $p$). Measured sparsity of $H(A)$ (uniform): 90.17--90.33\%, because weights regrown where the gradient is exactly zero (inputs from dead channels) stay zero.
+\end{table*}

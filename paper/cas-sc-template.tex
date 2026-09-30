@@ -64,12 +64,12 @@
 \def\floatpagepagefraction{1}
 \def\textpagefraction{.001}
 % Short title
-\shorttitle{DEGST: Dynamic Entropy-Guided Sparse Training}    
+\shorttitle{Drop criteria in dynamic sparse training}
 
 \shortauthors{Ha Vu et al.}  
 
 % Main title of the paper
-\title [mode = title]{Dynamic Entropy-Guided Sparse Training for Efficient Neural Network Compression}  
+\title [mode = title]{How Much Does the Drop Criterion Matter in Dynamic Sparse Training? A Controlled Study with Activation Entropy}
 
 
 
@@ -119,11 +119,11 @@
 
 % Here goes the abstract
 \begin{abstract}
-Dynamic sparse training methods such as RigL update the sparse topology during training, dropping connections by weight magnitude and regrowing them by gradient magnitude. We ask whether the entropy of the activations a weight reads adds useful information to the drop decision. Dynamic Entropy-Guided Sparse Training (DEGST) scores each weight by the histogram entropy of its input channel multiplied by its magnitude, $H(A)\cdot|w|$, inside an otherwise standard prune-and-regrow loop. A channel-level variant, DEGST-S, applies the entropy score to coupled channel groups and removes the selected channels physically, and a hybrid variant combines both levels under one weight budget.
+Dynamic sparse training (DST) methods such as RigL periodically drop and regrow connections at a fixed parameter budget. Most of them drop by weight magnitude and differ in how they regrow. We asked whether the entropy of the activations a weight reads makes a better drop criterion, and scored each weight by $H(A)\cdot|w|$. In an ablation that changes nothing but the drop score, this criterion did not beat magnitude, so we turned the question into a controlled study: how much does the drop criterion matter, and when?
 
-To isolate the contribution of entropy, we keep the training loop fixed and change only the drop criterion ($|w|$, $H(A)$, $H(A)\cdot|w|$). We then compare against RigL, gradual magnitude pruning, SNIP, movement pruning, Network Slimming, FPGM and an AutoPruner-style baseline. All methods keep the same number of weights, share one training recipe without method-specific tuning, and are run with three seeds at the main operating points. Accuracy is plotted against both non-zero and actually executed FLOPs, on CIFAR-10 with ResNet-18, with additional runs on CIFAR-100 and on MobileNetV2.
+Inside one fixed prune-and-regrow loop with gradient regrowth, we compare eight drop criteria, including a random-drop control and loss-based Taylor and Fisher scores, in four regimes (ResNet-18 on CIFAR-10 at 90\% and 98\% sparsity and on CIFAR-100 at 90\%, VGG-16 on CIFAR-100 at 90\%). Hypotheses, equivalence margins and tests were fixed before the runs; we report Welch confidence intervals with Holm correction and two one-sided equivalence tests (TOST), with five seeds for the key comparison.
 
-\TODO{State the C0 outcome in one sentence with numbers, e.g. ``At 90\% sparsity on CIFAR-10, $H(A)\cdot|w|$ changes accuracy by $X\pm Y$ points relative to $|w|$ in the same loop'', and say plainly whether this exceeds seed variance.} \TODO{State where DEGST, DEGST-S and the hybrid lie relative to the Pareto front at equal FLOPs, naming any baseline that dominates them.} Unstructured sparsity, including that of DEGST, gives no measurable speed-up with dense GPU kernels; only the channel-level variants reduce latency.
+Magnitude is necessary: entropy alone loses 2.6 to 7.7 accuracy points to $|w|$, and the loss grows with task difficulty. $H(A)\cdot|w|$ is statistically equivalent to $|w|$ in three of the four regimes and inconclusive in the easiest one ($+0.21$ points, 95\% CI $[-0.06, +0.48]$). Criteria whose drop sets overlap with that of $|w|$ with a Jaccard index of about 0.7 (entropy-weighted magnitude, Taylor, Fisher) never differ from it significantly, whereas criteria with an overlap below 0.1 lose 0.5 to 7.7 points, significantly in 8 of 10 cases. In a post hoc comparison, entropy alone is worse than random dropping in every regime: the histogram entropy of a post-ReLU channel mostly measures its share of zeros, so ranking by low entropy removes weights on sparse, selective channels. The entropy estimate costs about 1\% of training time.
 \end{abstract}
 
 % Use if graphical abstract is present
@@ -133,18 +133,18 @@ To isolate the contribution of entropy, we keep the training loop fixed and chan
 
 % Research highlights
 % \begin{highlights}
-% \item DEGST introduces entropy-guided dynamic sparse training.
-% \item Global prune-regrow enables adaptive topology optimization.
-% \item A unified criterion bridges unstructured and structured pruning.
-% \item Hybrid sparsity improves deployment efficiency and throughput.
-% \item Experiments explore the accuracy-efficiency trade-offs across different structural granularities.
+% \item Eight drop criteria compared inside one dynamic sparse training loop, four regimes.
+% \item Pre-registered hypotheses, equivalence tests and a random-drop control.
+% \item Entropy-weighted magnitude is equivalent to magnitude in three of four regimes.
+% \item Criteria that share under 10% of magnitude's drops lose up to 7.7 points.
+% \item Activation entropy alone is worse than random: it mostly measures sparsity.
 % \end{highlights}
 
 
 % Keywords
 % Each keyword is seperated by 
 \begin{keywords}
- Dynamic sparse training\sep Neural network pruning\sep Activation entropy\sep Structured sparsity\sep Unstructured sparsity\sep Model compression
+ Dynamic sparse training\sep Neural network pruning\sep Pruning criteria\sep Activation entropy\sep Equivalence testing\sep Model compression
 \end{keywords}
 
 

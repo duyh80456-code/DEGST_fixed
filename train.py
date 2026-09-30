@@ -27,7 +27,7 @@ def _parser():
         flag = '--' + f.name.replace('_', '-')
         if f.type in (bool, 'bool'):
             p.add_argument(flag, type=lambda s: s.lower() in ('1', 'true', 'yes'), default=None)
-        elif f.name == 'speed_batches':
+        elif f.name in ('speed_batches', 'checkpoint_epochs'):
             p.add_argument(flag, type=lambda s: tuple(int(x) for x in s.split(',')), default=None)
         else:
             typ = {int: int, float: float, str: str, 'int': int, 'float': float, 'str': str}[f.type]

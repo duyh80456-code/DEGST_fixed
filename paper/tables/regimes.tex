@@ -1,0 +1,41 @@
+\begin{table*}[t]
+\centering
+\caption{Drop criteria inside one prune/regrow loop across regimes (global allocation). Only the drop score differs within a block; regrowth is by gradient magnitude in every row.}
+\label{tab:regimes}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llcccccc}
+\toprule
+Regime & Drop criterion & Acc (\%) & $\Delta$ vs $|w|$ [95\% CI] (pp) & $p_{\mathrm{Holm}}$ & Equiv. & FLOPs red.\ sparse (\%) & Seeds \\
+\midrule
+CIFAR-10, ResNet-18, 90\% & Dense & 95.34$^{*}$ &  &  &  & 0.0 & 1 \\
+CIFAR-10, ResNet-18, 90\% & $|w|$ & 95.05 $\pm$ 0.19 & -- & -- & -- & 74.5 $\pm$ 1.5 & 5 \\
+CIFAR-10, ResNet-18, 90\% & $H(A)$ & 92.44 $\pm$ 0.40 & -2.61 [-3.47, -1.74] & 0.041 & no & 86.0 $\pm$ 0.7 & 3 \\
+CIFAR-10, ResNet-18, 90\% & $H(A)\cdot|w|$ (DEGST) & 95.26 $\pm$ 0.18 & +0.21 [-0.06, +0.48] & 0.881 & no & 73.4 $\pm$ 1.1 & 5 \\
+CIFAR-10, ResNet-18, 90\% & Random (control) & 94.23 $\pm$ 0.35 & -0.82 [-1.55, -0.09] & 0.339 & no & 81.5 $\pm$ 1.2 & 3 \\
+CIFAR-10, ResNet-18, 90\% & Taylor $|wg|$ & 94.99 $\pm$ 0.12 & -0.05 [-0.32, +0.22] & 1.000 & yes & 71.0 $\pm$ 2.5 & 3 \\
+CIFAR-10, ResNet-18, 90\% & Fisher $(wg)^2/2$ & 95.14 $\pm$ 0.18 & +0.09 [-0.27, +0.45] & 1.000 & no & 71.2 $\pm$ 2.1 & 3 \\
+CIFAR-10, ResNet-18, 90\% & Gradient $|g|$ & 94.50 $\pm$ 0.09 & -0.54 [-0.79, -0.30] & 0.022 & no & 75.4 $\pm$ 1.7 & 3 \\
+CIFAR-10, ResNet-18, 90\% & $H_{\mathrm{rob}}(A)\cdot|w|$ (exploratory) & 95.31 $\pm$ 0.10 & +0.26 [+0.01, +0.52] & 0.047$^{e}$ & no & 74.5 $\pm$ 0.7 & 3 \\
+CIFAR-100, ResNet-18, 90\% & Dense & 78.54$^{*}$ &  &  &  & 0.0 & 1 \\
+CIFAR-100, ResNet-18, 90\% & $|w|$ & 76.59 $\pm$ 0.27 & -- & -- & -- & 83.2 $\pm$ 0.5 & 5 \\
+CIFAR-100, ResNet-18, 90\% & $H(A)$ & 69.24 $\pm$ 0.57 & -7.35 [-8.59, -6.11] & 0.009 & no & 84.8 $\pm$ 0.0 & 3 \\
+CIFAR-100, ResNet-18, 90\% & $H(A)\cdot|w|$ (DEGST) & 76.44 $\pm$ 0.31 & -0.14 [-0.56, +0.28] & 1.000 & yes & 81.7 $\pm$ 0.4 & 5 \\
+CIFAR-100, ResNet-18, 90\% & Random (control) & 73.65 $\pm$ 0.22 & -2.94 [-3.38, -2.49] & $<$0.001 & no & 87.3 $\pm$ 0.3 & 3 \\
+CIFAR-100, ResNet-18, 90\% & Taylor $|wg|$ & 76.43 $\pm$ 0.37 & -0.15 [-0.90, +0.59] & 1.000 & no & 77.3 $\pm$ 0.8 & 3 \\
+CIFAR-100, ResNet-18, 90\% & Fisher $(wg)^2/2$ & 76.46 $\pm$ 0.58 & -0.13 [-1.39, +1.14] & 1.000 & no & 78.6 $\pm$ 2.0 & 3 \\
+CIFAR-100, ResNet-18, 90\% & Gradient $|g|$ & 73.86 $\pm$ 0.26 & -2.72 [-3.23, -2.22] & 0.001 & no & 82.3 $\pm$ 2.4 & 3 \\
+CIFAR-100, ResNet-18, 90\% & $H_{\mathrm{rob}}(A)\cdot|w|$ (exploratory) & 76.71 $\pm$ 0.26 & +0.12 [-0.39, +0.63] & 0.557$^{e}$ & no & 83.0 $\pm$ 0.3 & 3 \\
+CIFAR-10, ResNet-18, 98\% & Dense & 95.34$^{*}$ &  &  &  & 0.0 & 1 \\
+CIFAR-10, ResNet-18, 98\% & $|w|$ & 93.78 $\pm$ 0.14 & -- & -- & -- & 93.9 $\pm$ 0.4 & 5 \\
+CIFAR-10, ResNet-18, 98\% & $H(A)$ & 88.13 $\pm$ 0.08 & -5.64 [-5.83, -5.45] & $<$0.001 & no & 96.5 $\pm$ 0.3 & 3 \\
+CIFAR-10, ResNet-18, 98\% & $H(A)\cdot|w|$ (DEGST) & 93.75 $\pm$ 0.27 & -0.03 [-0.36, +0.31] & 1.000 & yes & 93.7 $\pm$ 0.4 & 5 \\
+CIFAR-10, ResNet-18, 98\% & Random (control) & 92.21 $\pm$ 0.35 & -1.57 [-2.36, -0.78] & 0.109 & no & 95.5 $\pm$ 0.1 & 3 \\
+CIFAR-100, VGG-16, 90\% & Dense & 73.93$^{*}$ &  &  &  & 0.0 & 1 \\
+CIFAR-100, VGG-16, 90\% & $|w|$ & 73.94 $\pm$ 0.19 & -- & -- & -- & 68.7 $\pm$ 1.0 & 5 \\
+CIFAR-100, VGG-16, 90\% & $H(A)$ & 66.28 $\pm$ 0.87 & -7.67 [-9.74, -5.59] & 0.041 & no & 81.6 $\pm$ 0.9 & 3 \\
+CIFAR-100, VGG-16, 90\% & $H(A)\cdot|w|$ (DEGST) & 73.95 $\pm$ 0.32 & +0.00 [-0.39, +0.40] & 1.000 & yes & 68.9 $\pm$ 0.9 & 5 \\
+CIFAR-100, VGG-16, 90\% & Random (control) & 72.53 $\pm$ 0.18 & -1.41 [-1.77, -1.06] & 0.004 & no & 76.0 $\pm$ 0.3 & 3 \\
+\bottomrule
+\end{tabular}}
+\par\smallskip\footnotesize Mean $\pm$ std over 3 seeds; $^{*}$ marks single-seed cells (no std); -- = not yet run. Accuracy is final-epoch test accuracy. $\Delta$: difference of means to the $|w|$ row of the same block, with its 95\% Welch CI; $p_{\mathrm{Holm}}$: two-sided Welch test, Holm-adjusted over all confirmatory comparisons of the table; Equiv.: TOST at $\pm$0.3 pp (CIFAR-10) / $\pm$0.5 pp (CIFAR-100, Tiny ImageNet), $\alpha$ = 0.05. Exploratory rows are not in the Holm family (unadjusted $p$). $^{e}$ exploratory.
+\end{table*}

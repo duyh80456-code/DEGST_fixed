@@ -21,7 +21,7 @@ import torch.nn.functional as F
 from . import metrics
 from .config import RunConfig
 from .criteria import NEEDS_ENTROPY, ScoreState, grad_scores
-from .data import NUM_CLASSES, get_loaders
+from .data import IMAGE_SIZE, NUM_CLASSES, get_loaders
 from .entropy import EntropyTracker
 from .models import build_model
 from .sparse import MaskManager, cosine_fraction, cubic_sparsity, prunable_layers
@@ -38,6 +38,39 @@ def seed_everything(seed):
 def _sync(device):
     if device.type == 'cuda':
         torch.cuda.synchronize()
+
+
+class _SectionTimer:
+    """Time spent in a code section that runs every step, without a host sync per step.
+
+    On CUDA each section is bracketed by two events and the elapsed times are read
+    once per epoch (``flush``, after the epoch's final sync): this is the stream
+    time between the section's start and end, including any idle gap while the host
+    runs the section's Python code. On CPU it is plain wall-clock time.
+    """
+
+    def __init__(self, device):
+        self.cuda = device.type == 'cuda'
+        self.pairs, self.cpu_seconds, self._t0 = [], 0.0, None
+
+    def start(self):
+        if self.cuda:
+            self.pairs.append((torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)))
+            self.pairs[-1][0].record()
+        else:
+            self._t0 = time.perf_counter()
+
+    def stop(self):
+        if self.cuda:
+            self.pairs[-1][1].record()
+        else:
+            self.cpu_seconds += time.perf_counter() - self._t0
+
+    def flush(self) -> float:
+        """Seconds since the last flush; on CUDA call after a device sync."""
+        s = sum(a.elapsed_time(b) for a, b in self.pairs) / 1000 if self.cuda else self.cpu_seconds
+        self.pairs, self.cpu_seconds = [], 0.0
+        return s
 
 
 @torch.no_grad()
@@ -61,6 +94,11 @@ class Run:
         self.cfg, self.verbose = cfg, verbose
         self.device = torch.device(device or ('cuda' if torch.cuda.is_available() else 'cpu'))
         self.amp = cfg.amp and self.device.type == 'cuda'
+        if self.device.type == 'cuda':
+            # fixed input shapes: let cuDNN pick the fastest conv algorithms (runs are not bitwise
+            # deterministic anyway: no deterministic mode is set)
+            torch.backends.cudnn.benchmark = True
+        self.update_timer = _SectionTimer(self.device)
         seed_everything(cfg.seed)
         self.train_loader, self.eval_loader, self.eval_split = get_loaders(
             cfg.dataset, cfg.data_root, cfg.batch_size, cfg.num_workers, cfg.val_size, cfg.seed)
@@ -105,13 +143,14 @@ class Run:
                 g = torch.Generator().manual_seed(c.seed)
                 self.mm.init_random(c.sparsity, generator=g)
         if c.kind in ('structured', 'hybrid'):
-            ex = torch.zeros(1, 3, 32, 32, device=self.device)
+            hw = IMAGE_SIZE[c.dataset]
+            ex = torch.zeros(1, 3, hw, hw, device=self.device)
             self.cg = ChannelGroups(self.model, ex, self.model.linear, c.min_channel_keep)
             share = c.hybrid_struct_share if c.kind == 'hybrid' else 1.0
             self.struct_sparsity = share * c.sparsity
             if c.channel_criterion == 'entropy':
                 self.tracker = EntropyTracker(self.cg.bn_modules(), 'output', c.bins, c.entropy_reduction,
-                                              c.entropy_max_samples)
+                                              c.entropy_max_samples, estimator=c.entropy_estimator)
             if c.channel_criterion == 'learned':
                 keep = 1 - self.cg.uniform_ratio_for((1 - self.struct_sparsity) * self.dense_weights)
                 self.ap_keep = keep
@@ -125,10 +164,10 @@ class Run:
     def _init_unstructured(self):
         c = self.cfg
         self.mm = MaskManager(self.model, c.allocation, c.min_density)
-        self.scores = ScoreState(self.mm.layers, c.criterion)
+        self.scores = ScoreState(self.mm.layers, c.criterion, seed=c.seed)
         if c.criterion in NEEDS_ENTROPY and self.tracker is None:
             self.tracker = EntropyTracker(self.mm.layers, 'input', c.bins, c.entropy_reduction,
-                                          c.entropy_max_samples)
+                                          c.entropy_max_samples, estimator=c.entropy_estimator)
 
     # ------------------------------------------------------------------ schedule helpers
     def lr_at(self, t):
@@ -282,6 +321,22 @@ class Run:
             self.tracker = None
         self._optimizer()
 
+    def _save_mid_checkpoint(self, epoch, t):
+        """Model and current masks at the end of ``epoch`` (for analysis/score_overlap.py)."""
+        d = os.path.join(self.cfg.out_dir, 'checkpoints')
+        os.makedirs(d, exist_ok=True)
+        c = self.cfg
+        masks = {n: m.detach().cpu().clone() for n, m in self.mm.masks.items()} if self.mm is not None else None
+        # what the loop would do at the next update, so the analysis can replay that exact step
+        init = self._mask_init_step()
+        frac = self._fraction(t, init if init is not None else 0) if c.kind == 'dst' else None
+        path = os.path.join(d, f'{c.run_id()}_ep{epoch}.pt')
+        torch.save({'model': self.model, 'masks': masks, 'epoch': epoch, 'step': t, 'swap_fraction': frac,
+                    'update_interval': c.update_interval, 'entropy_batches': c.entropy_batches,
+                    'seed': c.seed}, path + '.tmp')
+        os.replace(path + '.tmp', path)
+        self._log(f'  saved {path}')
+
     # ------------------------------------------------------------------ main loop
     def train(self):
         c, dev = self.cfg, self.device
@@ -318,8 +373,7 @@ class Run:
                 self.opt.zero_grad(set_to_none=True)
                 total.backward()
 
-                _sync(dev)
-                tu0 = time.perf_counter()
+                self.update_timer.start()
                 if self.scores is not None:
                     self.scores.accumulate()
                 if self.cg is not None:
@@ -328,19 +382,26 @@ class Run:
                 self._unstructured_update(t)
                 if self.mm is not None:
                     self.mm.mask_grads()
-                _sync(dev)
-                self.update_seconds += time.perf_counter() - tu0
+                self.update_timer.stop()
 
                 self.opt.step()
                 if self.mm is not None:
                     self.mm.apply()
-                run_loss += loss.item() * y.numel()
-                run_correct += (out.argmax(1) == y).sum().item()
+                # running sums stay on the device: no host sync per step
+                run_loss += loss.detach().double() * y.numel()
+                run_correct += (out.argmax(1) == y).sum()
                 run_n += y.numel()
                 t += 1
             _sync(dev)
             epoch_times.append(time.perf_counter() - te0)
-            acc, eval_loss = evaluate(self.model, self.eval_loader, dev, self.amp)
+            self.update_seconds += self.update_timer.flush()
+            run_loss, run_correct = float(run_loss), int(run_correct)
+            # the test set is only read every eval_every epochs; the reported accuracy is the last epoch's
+            last = epoch + 1 == c.epochs
+            if epoch == 0 or last or (epoch + 1) % max(1, c.eval_every) == 0:
+                acc, eval_loss = evaluate(self.model, self.eval_loader, dev, self.amp)
+            else:
+                acc = eval_loss = None
             rec = {'epoch': epoch + 1, 'train_loss': run_loss / run_n, 'train_acc': 100 * run_correct / run_n,
                    f'{self.eval_split}_acc': acc, f'{self.eval_split}_loss': eval_loss,
                    'epoch_seconds': epoch_times[-1]}
@@ -348,9 +409,12 @@ class Run:
                 rec['sparsity'] = self.mm.sparsity(self.dense_weights) if c.kind != 'hybrid' or self.cg is None \
                     else None
             history.append(rec)
-            if epoch == 0 or (epoch + 1) % 10 == 0 or epoch + 1 == c.epochs:
+            if epoch + 1 in c.checkpoint_epochs and epoch + 1 < c.epochs:
+                self._save_mid_checkpoint(epoch + 1, t)
+            if epoch == 0 or (epoch + 1) % 10 == 0 or last:
+                acc_s = f'{acc:.2f}' if acc is not None else '--'
                 self._log(f'epoch {epoch + 1}/{c.epochs} loss {rec["train_loss"]:.3f} '
-                          f'train {rec["train_acc"]:.2f} {self.eval_split} {acc:.2f} ({epoch_times[-1]:.1f}s)')
+                          f'train {rec["train_acc"]:.2f} {self.eval_split} {acc_s} ({epoch_times[-1]:.1f}s)')
         _sync(dev)
         train_seconds = time.perf_counter() - t_train0
         entropy_seconds = self.entropy_seconds + (self.tracker.seconds if self.tracker else 0.0)
@@ -366,9 +430,10 @@ class Run:
         c, m = self.cfg, self.model
         m.eval()
         pc = metrics.param_counts(m)
-        fl = metrics.flops(m)
+        hw = IMAGE_SIZE[c.dataset]
+        fl = metrics.flops(m, (1, 3, hw, hw))
         dense_model = build_model(c.model, NUM_CLASSES[c.dataset]).to(self.device)
-        fl0 = metrics.flops(dense_model)
+        fl0 = metrics.flops(dense_model, (1, 3, hw, hw))
         res = {
             **pc, **fl,
             'dense_weights': self.dense_weights,
@@ -377,7 +442,7 @@ class Run:
             'sparsity_actual': 1 - pc['weights_nonzero'] / self.dense_weights,
             'flops_reduction_sparse': 1 - fl['flops_sparse'] / fl0['flops_dense'],
             'flops_reduction_dense_arch': 1 - fl['flops_dense'] / fl0['flops_dense'],
-            'speed': metrics.measure_speed(m, c.speed_batches, self.device, c.speed_warmup, c.speed_iters),
+            'speed': metrics.measure_speed(m, c.speed_batches, self.device, c.speed_warmup, c.speed_iters, hw),
             'speed_protocol': metrics.protocol(self.device, c.speed_warmup, c.speed_iters, c.speed_batches),
         }
         return res
@@ -395,13 +460,17 @@ def run(cfg: RunConfig, device=None, verbose=True) -> dict:
         'final_acc': history[-1][key],          # final-epoch accuracy; never the max over the eval set
         'history': history, 'topology_log': r.log[-200:], 'cost': cost, 'final': final,
     }
+    # checkpoint first and both files atomically: the JSON marks a run as done (--skip-existing), so it
+    # must only appear once the checkpoint is complete
+    if cfg.save_checkpoint:
+        os.makedirs(os.path.join(cfg.out_dir, 'checkpoints'), exist_ok=True)
+        ck = os.path.join(cfg.out_dir, 'checkpoints', cfg.run_id() + '.pt')
+        torch.save(r.model.cpu(), ck + '.tmp')
+        os.replace(ck + '.tmp', ck)
     path = os.path.join(cfg.out_dir, cfg.run_id() + '.json')
     with open(path + '.tmp', 'w') as f:
         json.dump(result, f, indent=1)
     os.replace(path + '.tmp', path)
-    if cfg.save_checkpoint:
-        os.makedirs(os.path.join(cfg.out_dir, 'checkpoints'), exist_ok=True)
-        torch.save(r.model.cpu(), os.path.join(cfg.out_dir, 'checkpoints', cfg.run_id() + '.pt'))
     r._log(f'== done {cfg.run_id()}: {key} {result["final_acc"]:.2f}  sparsity {final["sparsity_actual"]:.4f}  '
            f'FLOPs red. sparse {final["flops_reduction_sparse"]:.3f} / dense-arch {final["flops_reduction_dense_arch"]:.3f}')
     return result

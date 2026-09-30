@@ -2,6 +2,8 @@
 
 All three are the usual 32x32 variants (3x3 stem, no initial max-pool), so
 FLOPs/params numbers are comparable with the CIFAR pruning literature.
+The same networks are used unchanged on 64x64 Tiny ImageNet (global average
+pooling before the classifier), which costs ~4x the FLOPs of a 32x32 input.
 """
 import torch
 import torch.nn as nn
@@ -75,7 +77,8 @@ class VGG(nn.Module):
         self.linear = nn.Linear(c, num_classes)
 
     def forward(self, x):
-        return self.linear(self.features(x).flatten(1))
+        # 1x1 after the last pool at 32x32; the adaptive pool only matters for larger inputs (Tiny ImageNet)
+        return self.linear(F.adaptive_avg_pool2d(self.features(x), 1).flatten(1))
 
 
 # --------------------------------------------------------------------------- MobileNetV2

@@ -3,13 +3,13 @@
 \caption{Ablation C0: the same prune/regrow loop with three drop criteria (CIFAR-10, ResNet-18, 90\% target sparsity). Only the importance score differs between rows.}
 \label{tab:c0}
 \resizebox{\textwidth}{!}{%
-\begin{tabular}{lllccccc}
+\begin{tabular}{llccccc}
 \toprule
-Cfg & Loop & Drop score & Acc (\%) & Sparsity (\%) & FLOPs red. (\%) & Non-zero weights & Seeds \\
+Cfg & Drop score & Acc (\%) & Sparsity (\%) & FLOPs red.\ sparse (\%) & Non-zero weights & Seeds \\
 \midrule
-A & DEGST loop, $|w|$ only & $|w|$ & -- & -- & -- & -- & 0 \\
-B & DEGST, $H(A)$ only & $H(A)$ & -- & -- & -- & -- & 0 \\
-C & DEGST & $H(A)\cdot|w|$ & -- & -- & -- & -- & 0 \\
+A & $|w|$ & 95.03 $\pm$ 0.07 & 90.00 $\pm$ 0.00 & 75.2 $\pm$ 1.5 & 1,116,435 $\pm$ 0 & 3 \\
+B & $H(A)$ & 92.44 $\pm$ 0.40 & 90.00 $\pm$ 0.00 & 86.0 $\pm$ 0.7 & 1,116,435 $\pm$ 0 & 3 \\
+C & $H(A)\cdot|w|$ & 95.30 $\pm$ 0.21 & 90.00 $\pm$ 0.00 & 73.6 $\pm$ 0.7 & 1,116,435 $\pm$ 0 & 3 \\
 \bottomrule
 \end{tabular}}
 \par\smallskip\footnotesize Mean $\pm$ std over 3 seeds; $^{*}$ marks single-seed cells (no std); -- = not yet run. Accuracy is final-epoch test accuracy.

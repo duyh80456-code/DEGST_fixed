@@ -7,7 +7,8 @@
     fisher             mean_t (w * g)^2 / 2              (empirical-Fisher OBD saliency)
     movement           -sum_t w * g                      (Sanh et al., cumulative)
     gradient           mean_t |g|
-    snip               |w * g| at initialisation         (one-shot)
+    random             uniform noise                     (control: no criterion; own RNG, seeded per run)
+    snip              |w * g| at initialisation         (one-shot)
     eltp               |w * g| * (1 - E_i / log n)       (pre-revision "DEGST" score, instantaneous g;
                                                           E_i = -p_i log p_i, p_i = |w_i| / sum_layer |w|)
 
@@ -28,10 +29,16 @@ NEEDS_ACCUM = {'taylor', 'fisher', 'movement', 'gradient'}
 
 
 class ScoreState:
-    def __init__(self, layers: Dict[str, torch.nn.Module], criterion: str):
+    def __init__(self, layers: Dict[str, torch.nn.Module], criterion: str, seed: int = 0):
         self.layers, self.criterion = layers, criterion
         self.acc = {n: torch.zeros_like(m.weight) for n, m in layers.items()} if criterion in NEEDS_ACCUM else {}
         self.count = 0
+        self.seed, self._gen = seed, None   # 'random' only: a private generator leaves the global RNG alone
+
+    def _random(self, w: torch.Tensor) -> torch.Tensor:
+        if self._gen is None:
+            self._gen = torch.Generator(device=w.device).manual_seed(self.seed)
+        return torch.rand(w.shape, generator=self._gen, device=w.device)
 
     @torch.no_grad()
     def accumulate(self):
@@ -59,6 +66,8 @@ class ScoreState:
             w = m.weight.detach()
             if c == 'magnitude':
                 s = w.abs()
+            elif c == 'random':
+                s = self._random(w)
             elif c in NEEDS_ENTROPY:
                 if entropy is None or n not in entropy:
                     raise RuntimeError(f'no entropy recorded for layer {n}')
