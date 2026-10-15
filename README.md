@@ -48,7 +48,7 @@ now a controlled study of drop criteria in DST. Hypotheses, suites and decision 
 ```bash
 pip install scipy                            # aggregate.py: Welch CIs, TOST, Holm, Spearman
 python -m experiments.plan run study         # one GPU, 92 runs ~34 h, seed 0 of every cell first (~10 h)
-python -m experiments.plan run regimes_tin   # optional: Tiny ImageNet 90% (~29 h)
+python -m experiments.plan run regimes_tin   # Tiny ImageNet 90%: |w|, H, random x 3 seeds + dense, 100 epochs (10 runs, ~14 h)
 python analysis/score_overlap.py results/checkpoints/*_ep*.pt results/midckpt/checkpoints/*_ep*.pt
 python aggregate.py            # + paper/tables/regimes.tex, allocation.tex, Figures/divergence_accuracy.pdf
 ```
@@ -129,7 +129,7 @@ python -m experiments.plan run quick  # 5 epochs on real CIFAR-10 for dense/degs
 **Sau C0 (âm tính):** bài chuyển thành nghiên cứu các tiêu chí cắt trong DST. Thiết kế, giả thuyết và
 quy tắc quyết định nằm trong `experiments/DESIGN.md`. Trên 1 GPU chỉ cần `python -m experiments.plan run study`
 (92 run, khoảng 34 giờ trên RTX 3090, dừng rồi chạy lại được), tùy chọn thêm `regimes_tin`
-(Tiny ImageNet, khoảng 29 giờ). `study` chạy seed 0 của mọi ô trước (khoảng 10 giờ) để phát hiện lỗi sớm.
+(Tiny ImageNet thu gọn: |w|, H, random × 3 seed + dense, 100 epoch = cùng số iteration với CIFAR, 10 run, khoảng 14 giờ). `study` chạy seed 0 của mọi ô trước (khoảng 10 giờ) để phát hiện lỗi sớm.
 Cần `pip install scipy` cho phần thống kê (Welch, TOST, Holm).
 `--parallel N` vẫn có nhưng trên RTX 3090 không nhanh hơn (đã đo: 3 run song song ≈ 22.7 s/epoch mỗi run). Sau đó chạy `analysis/score_overlap.py` trên các checkpoint `_ep50`/`_ep100`
 và `python aggregate.py`.
