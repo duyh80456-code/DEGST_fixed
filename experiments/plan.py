@@ -13,7 +13,8 @@ in experiments/DESIGN.md. Suites of that study:
                  (ResNet-18 CIFAR-10 98%, VGG-16 CIFAR-100 90%): |w|, H, H|w|, random.
                  The |w| seed-0 run of each regime saves mid-training checkpoints.   (72 runs, 9 from c0)
     power        seeds 3 and 4 for |w| and H|w| in every regime (equivalence test)           (16 runs)
-    regimes_tin  key criteria on Tiny ImageNet 90% + dense (optional, ~4x the cost per run)  (17 runs)
+    regimes_tin  |w|, H, random on Tiny ImageNet 90%, 3 seeds, + dense (1 seed), seed-major; 100 epochs
+                 (= the CIFAR loop in iterations, see TIN_RECIPE), ~1.4 h per run            (10 runs)
     c0_uniform   A/B/C with layer-uniform allocation: separates within-layer ranking from
                  the budget shift between layers, CIFAR-10 90%, 3 seeds                          (9 runs)
     midckpt      the CIFAR-10 90% |w| seed-0 run again (C0 had no mid-training checkpoints),
@@ -86,6 +87,14 @@ MAIN_REGIMES = (('cifar10', 'resnet18', 0.9), ('cifar100', 'resnet18', 0.9))
 SECONDARY_REGIMES = (('cifar10', 'resnet18', 0.98), ('cifar100', 'vgg16', 0.9))
 REGIMES = MAIN_REGIMES + SECONDARY_REGIMES
 TIN_REGIME = ('tinyimagenet', 'resnet18', 0.9)
+# reduced Tiny ImageNet regime (decided 2026-09-30, before any Tiny ImageNet result): tests H0/H1 and
+# entropy vs random at a larger scale; no H|w| and no extra seeds, so no equivalence test there
+TIN_METHODS = ('degst_magnitude', 'degst_entropy', 'dst_random')
+# Tiny ImageNet has 100k training images (781 iterations/epoch vs 390 on CIFAR). Halving every epoch
+# count keeps the loop identical in iterations: ~78k SGD steps, warm-up ~3.9k, T_end ~58.6k, ~136
+# topology updates at Delta T = 400, and the mid-training checkpoints at the same steps (25/50 = 50/100).
+TIN_RECIPE = dict(epochs=100, warmup_epochs=5, end_epoch=75)
+TIN_MIDCKPT_EPOCHS = (25, 50)
 ALL_REGIMES = REGIMES + (TIN_REGIME,)
 EQUIV_METHODS = ('degst_magnitude', 'degst')   # the pair that carries the equivalence claim ...
 EXTRA_SEEDS = (3, 4)                           # ... gets 5 seeds in every regime
@@ -98,6 +107,8 @@ STUDY = ('midckpt', 'c0_uniform', 'regimes', 'power', 'dense_study')
 
 
 def methods_for(regime):
+    if regime == TIN_REGIME:
+        return TIN_METHODS
     return FULL_METHODS if regime in MAIN_REGIMES else KEY_METHODS
 
 
@@ -105,8 +116,17 @@ def regime_cfg(method, regime, seed):
     """One cell of the study. The |w| seed-0 run of a regime also saves mid-training checkpoints
     (analysis/score_overlap.py); checkpoint_epochs does not change the run id."""
     d, a, sp = regime
-    kw = {'checkpoint_epochs': MIDCKPT_EPOCHS} if method == 'degst_magnitude' and seed == 0 else {}
+    tin = regime == TIN_REGIME
+    kw = dict(TIN_RECIPE) if tin else {}
+    if method == 'degst_magnitude' and seed == 0:
+        kw['checkpoint_epochs'] = TIN_MIDCKPT_EPOCHS if tin else MIDCKPT_EPOCHS
     return cfg(method, sp, seed, dataset=d, model=a, **kw)
+
+
+def dense_cfg(dataset, model, seed):
+    """Dense reference; trained for the same number of iterations as the sparse runs of its regime."""
+    kw = {'epochs': TIN_RECIPE['epochs']} if dataset == TIN_REGIME[0] else {}
+    return cfg('dense', 0.0, seed, dataset=dataset, model=model, **kw)
 
 SUITES = ('c0', 'dense', 'study', 'regimes', 'power', 'c0_uniform', 'midckpt', 'dense_study', 'regimes_tin',
           'main', 'pareto', 'sensitivity', 'ext', 'criteria', 'legacy', 'quick')
@@ -141,17 +161,16 @@ def suite(name):
         # look can catch broken cells; the set of runs does not depend on the order
         return sorted(out, key=lambda c: c.seed)
     if name == 'dense_study':
-        return [cfg('dense', 0.0, s, dataset=d, model=a)
-                for d, a in dict.fromkeys((d, a) for d, a, _ in REGIMES) for s in DENSE_SEEDS]
+        return [dense_cfg(d, a, s) for d, a in dict.fromkeys((d, a) for d, a, _ in REGIMES) for s in DENSE_SEEDS]
     if name == 'regimes':
         return [regime_cfg(m, r, s) for r in REGIMES for m in methods_for(r) for s in SEEDS]
     if name == 'power':
         return [regime_cfg(m, r, s) for r in REGIMES for m in EQUIV_METHODS for s in EXTRA_SEEDS]
     if name == 'regimes_tin':
-        d, a, sp = TIN_REGIME
-        return ([cfg('dense', 0.0, s, dataset=d, model=a) for s in DENSE_SEEDS] +
-                [regime_cfg(m, TIN_REGIME, s) for m in KEY_METHODS for s in SEEDS] +
-                [regime_cfg(m, TIN_REGIME, s) for m in EQUIV_METHODS for s in EXTRA_SEEDS])
+        d, a, _ = TIN_REGIME
+        jobs = ([dense_cfg(d, a, s) for s in DENSE_SEEDS] +
+                [regime_cfg(m, TIN_REGIME, s) for m in TIN_METHODS for s in SEEDS])
+        return sorted(jobs, key=lambda c: c.seed)      # seed-major: complete seed passes first
     if name == 'c0_uniform':
         return [cfg(m, 0.9, s, allocation='uniform') for m in C0_METHODS for s in SEEDS]
     if name == 'midckpt':

@@ -302,14 +302,22 @@ def crit_key(method):
     return spec['criterion'] + ('_robust' if spec.get('entropy_estimator') == 'robust' else '')
 
 
-CRIT_NAMES = {'magnitude': '$|w|$', 'entropy': '$H(A)$', 'entropy_magnitude': '$H(A)\\cdot|w|$ (DEGST)',
+CRIT_NAMES = {'magnitude': '$|w|$', 'entropy': '$H(A)$', 'entropy_magnitude': '$H(A)\\cdot|w|$',
               'entropy_magnitude_robust': '$H_{\\mathrm{rob}}(A)\\cdot|w|$ (exploratory)',
               'taylor': 'Taylor $|wg|$', 'fisher': 'Fisher $(wg)^2/2$', 'gradient': 'Gradient $|g|$',
               'random': 'Random (control)'}
-DIFF_NOTE = (' $\\Delta$: difference of means to the $|w|$ row of the same block, with its 95\\% Welch CI; '
-             '$p_{\\mathrm{Holm}}$: two-sided Welch test, Holm-adjusted over all confirmatory comparisons of '
-             'the table; Equiv.: TOST at $\\pm$0.3 pp (CIFAR-10) / $\\pm$0.5 pp (CIFAR-100, Tiny ImageNet), '
-             '$\\alpha$ = 0.05. Exploratory rows are not in the Holm family (unadjusted $p$).')
+STUDY_NOTE = ('Mean $\\pm$ std over the number of seeds given in the last column; $^{*}$ marks single-seed cells '
+              '(no std). Accuracy is final-epoch test accuracy.')
+
+
+def diff_note(datasets):
+    """Footnote of the study tables; lists the TOST margins of the datasets actually shown."""
+    margins = ', '.join(f'$\\pm${EQ_MARGIN[d]} pp on {DATASET_NAMES[d]}' for d in dict.fromkeys(datasets)
+                        if d in EQ_MARGIN)
+    return (' $\\Delta$: difference of means to the $|w|$ row of the same block, with its 95\\% Welch CI; '
+            '$p_{\\mathrm{Holm}}$: two-sided Welch test, Holm-adjusted over all confirmatory comparisons of '
+            f'the table; Equiv.: TOST at {margins}, $\\alpha$ = 0.05. Exploratory rows are not in the Holm '
+            'family (unadjusted $p$).')
 
 
 def regime_key(d, a, sp):
@@ -366,6 +374,8 @@ def _criteria_block(cfgs, margin=None):
     out = {}
     for v in g.values():
         m, runs = v['cfg'].method, v['runs']
+        if not runs:                  # a cell of the plan that was not run (e.g. H|w| on Tiny ImageNet)
+            continue
         fl = field(runs, ('final', 'flops_reduction_sparse'))
         out[m] = {'criterion': crit_key(m), 'exploratory': m in plan.EXPLORATORY, 'accs': accs[m],
                   'n': len(accs[m]), 'mean': mean(accs[m]), 'std': stdev(accs[m]), 'flops': fl,
@@ -385,7 +395,9 @@ def _adjust(blocks):
 
 def _row(label, info):
     st = info['vs_magnitude']
-    if st is None:
+    if st is None and info['criterion'] == 'magnitude':
+        delta, p_cell, eq = '\\emph{reference}', '', ''
+    elif st is None:
         delta = p_cell = eq = '--'
     else:
         delta = f'{st["diff"]:+.2f} [{st["ci95"][0]:+.2f}, {st["ci95"][1]:+.2f}]'
@@ -405,14 +417,14 @@ def regimes_table():
     for r in plan.ALL_REGIMES:
         d, a, sp = r
         key = regime_key(d, a, sp)
-        cfgs = [plan.cfg(m, sp, s, dataset=d, model=a) for m in plan.methods_for(r) for s in plan.SEEDS]
-        cfgs += [plan.cfg(m, sp, s, dataset=d, model=a) for m in plan.EQUIV_METHODS for s in plan.EXTRA_SEEDS]
+        cfgs = [plan.regime_cfg(m, r, s) for m in plan.methods_for(r) for s in plan.SEEDS]
+        cfgs += [plan.regime_cfg(m, r, s) for m in plan.EQUIV_METHODS for s in plan.EXTRA_SEEDS]
         block = _criteria_block(cfgs, EQ_MARGIN.get(d))
         if not any(info['n'] for info in block.values()):
             print(f'{key}: no runs yet, left out of the table')
             continue
         blocks[key] = block
-        dense = collect([plan.cfg('dense', 0.0, s, dataset=d, model=a) for s in plan.SEEDS])
+        dense = collect([plan.dense_cfg(d, a, s) for s in plan.SEEDS])
         meta[key] = {'dataset': d, 'model': a, 'sparsity': sp, 'label': regime_label(d, a, sp),
                      'dense_acc': [r_['final_acc'] for v in dense.values() for r_ in v['runs']]}
     _adjust(blocks)
@@ -429,7 +441,8 @@ def regimes_table():
     write('regimes.tex', table(
         'Drop criteria inside one prune/regrow loop across regimes (global allocation). Only the drop score '
         'differs within a block; regrowth is by gradient magnitude in every row.', 'tab:regimes', 'llcccccc',
-        TABLE_HEAD, rows, SEED_NOTE + DIFF_NOTE + ' $^{e}$ exploratory.'))
+        TABLE_HEAD, rows,
+        STUDY_NOTE + diff_note(meta[k]['dataset'] for k in blocks) + ' $^{e}$ exploratory.'))
     for key, s in summary.items():
         for m, info in s['methods'].items():
             st = info['vs_magnitude']
@@ -463,7 +476,7 @@ def allocation_table():
         'C0 criteria with global and layer-uniform allocation (CIFAR-10, ResNet-18, 90\\%). With uniform '
         'allocation every layer keeps the same density, so differences can only come from which weights '
         'are dropped inside a layer.', 'tab:allocation', 'llcccccc',
-        TABLE_HEAD.replace('Regime', 'Allocation'), rows, SEED_NOTE + DIFF_NOTE + note))
+        TABLE_HEAD.replace('Regime', 'Allocation'), rows, STUDY_NOTE + diff_note(['cifar10']) + note))
 
 
 def entropy_vs_random_table(summary):
@@ -491,7 +504,7 @@ def entropy_vs_random_table(summary):
         json.dump(out, f, indent=1)
     write('entropy_vs_random.tex', table(
         'Post hoc comparison: drop by entropy alone against random drop, same loop and regrowth. Both drop sets '
-        'overlap with that of $|w|$ by less than 10\\% (Fig.~\\ref{fig:divergence}).', 'tab:hrandom', 'lcccc',
+        'have a Jaccard overlap below 0.1 with that of $|w|$ (Fig.~\\ref{fig:divergence}).', 'tab:hrandom', 'lcccc',
         'Regime & $H(A)$ (\\%) & Random (\\%) & $\\Delta$ $H(A) -$ random [95\\% CI] (pp) & $p_{\\mathrm{Holm}}$',
         rows, 'Welch tests, Holm-adjusted over the regimes shown. This comparison was not planned before the '
         'results; it is reported as a post hoc analysis.'))
@@ -597,6 +610,105 @@ def entropy_sparsity_figure(name='cifar100_resnet18_degst_magnitude_s90_seed0_ep
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(1, len(layers)))
     fig.colorbar(sm, ax=axes, label='layer (input side)', fraction=.03)
     _save(fig, 'entropy_vs_sparsity.pdf')
+    plt.close(fig)
+
+
+CURVE_METHODS = ('degst_magnitude', 'degst', 'dst_random', 'degst_entropy')
+
+
+def learning_curves_figure():
+    """Post hoc: train (every epoch) and test (every eval) accuracy over training, per regime.
+
+    The x-axis is the fraction of training (iterations), so Tiny ImageNet (100 epochs) and CIFAR
+    (200 epochs) line up; dotted lines mark the end of the warm-up and T_end. Also writes the
+    final train/test accuracies to results/learning_curves.json.
+    """
+    plt = _plt()
+    curves, final = {}, {}
+    for r in plan.ALL_REGIMES:
+        key = regime_key(*r)
+        for m in CURVE_METHODS:
+            if m not in plan.methods_for(r):
+                continue
+            hs = [load(plan.regime_cfg(m, r, s)) for s in plan.SEEDS]
+            hs = [x['history'] for x in hs if x]
+            if not hs:
+                continue
+            n = len(hs[0])
+            tr = [mean([h[e]['train_acc'] for h in hs]) for e in range(n)]
+            te = [(e, mean([h[e].get('test_acc') for h in hs])) for e in range(n)
+                  if hs[0][e].get('test_acc') is not None]
+            curves.setdefault(key, {})[m] = (n, tr, te)
+            final.setdefault(key, {})[m] = {'train_acc': tr[-1], 'test_acc': te[-1][1], 'n': len(hs)}
+    if not curves:
+        print('learning_curves_figure: no runs, skipped')
+        return
+    with open(os.path.join(plan.RESULTS, 'learning_curves.json'), 'w') as f:
+        json.dump(final, f, indent=1)
+    keys = list(curves)
+    # drawn at the printed width (7.2 in), so fonts are not scaled down by LaTeX
+    fig, axes = plt.subplots(2, len(keys), figsize=(7.2, 4.0), squeeze=False)
+    for j, key in enumerate(keys):
+        regime = next(r for r in plan.ALL_REGIMES if regime_key(*r) == key)
+        c = plan.regime_cfg(next(iter(curves[key])), regime, 0)
+        for m, (n, tr, te) in curves[key].items():
+            col = f'C{CURVE_METHODS.index(m)}'
+            lab = SHORT_NAMES[crit_key(m)]
+            axes[0][j].plot([(e + 1) / n for e in range(n)], tr, color=col, lw=1.1, label=lab)
+            axes[1][j].plot([(e + 1) / n for e, _ in te], [v for _, v in te], color=col, lw=1.1, marker='.', ms=3)
+        for ax in (axes[0][j], axes[1][j]):
+            for x in (c.warmup_epochs / c.epochs, c.end_epoch / c.epochs):
+                ax.axvline(x, color='grey', ls=':', lw=.8)
+            ax.grid(alpha=.3)
+            ax.tick_params(labelsize=6)
+            ax.set_xticks([0, 0.5, 1])
+        axes[0][j].set_title(regime_label(*regime).replace('\\%', '%').replace(', ', '\n', 1), fontsize=7)
+        axes[1][j].set_xlabel('fraction of training', fontsize=7)
+    axes[0][0].set_ylabel('train accuracy (%)', fontsize=7)
+    axes[1][0].set_ylabel('test accuracy (%)', fontsize=7)
+    axes[0][0].legend(fontsize=6, loc='lower right')
+    fig.tight_layout()
+    _save(fig, 'learning_curves.pdf')
+    plt.close(fig)
+
+
+def jaccard_figure(keys=('cifar10_resnet18_s90', 'cifar100_resnet18_s90')):
+    """Jaccard overlap between the drop sets of every pair of criteria (mean over the replay checkpoints)."""
+    import glob
+    order = ['magnitude', 'entropy_magnitude_robust', 'entropy_magnitude', 'taylor', 'fisher', 'gradient',
+             'entropy', 'random']
+    mats = {}
+    for path in glob.glob(os.path.join(plan.RESULTS, 'analysis', 'overlap_*.json')):
+        with open(path) as f:
+            o = json.load(f)
+        if o.get('method') != 'degst_magnitude' or o.get('epoch') is None or 'sparsity_pct' not in o:
+            continue
+        key = f'{o["dataset"]}_{o["model"]}_s{o["sparsity_pct"]}'
+        if key in keys:
+            mats.setdefault(key, []).append(o['summary']['jaccard'])
+    keys = [k for k in keys if k in mats]
+    if not keys:
+        print('jaccard_figure: no replay files, skipped')
+        return
+    plt = _plt()
+    fig, axes = plt.subplots(1, len(keys), figsize=(7.2, 3.4), squeeze=False)
+    fig.subplots_adjust(wspace=0.55)            # room for the y labels of the right panel
+    for ax, key in zip(axes[0], keys):
+        crit = [c for c in order if all(c in J for J in mats[key])]
+        m = [[mean([J[a][b] for J in mats[key]]) for b in crit] for a in crit]
+        im = ax.imshow(m, vmin=0, vmax=1, cmap='viridis')
+        ax.set_xticks(range(len(crit)))
+        ax.set_yticks(range(len(crit)))
+        ax.set_xticklabels([SHORT_NAMES[c] for c in crit], rotation=60, fontsize=6.5)
+        ax.set_yticklabels([SHORT_NAMES[c] for c in crit], fontsize=6.5)
+        for i in range(len(crit)):
+            for j in range(len(crit)):
+                ax.text(j, i, f'{m[i][j]:.2f}', ha='center', va='center', fontsize=5.5,
+                        color='black' if m[i][j] > 0.5 else 'white')
+        d, a, sp = key.split('_')
+        ax.set_title(regime_label(d, a, int(sp[1:]) / 100).replace('\\%', '%'), fontsize=8)
+    fig.colorbar(im, ax=list(axes[0]), fraction=.025, label='Jaccard index of drop sets')
+    _save(fig, 'jaccard_matrix.pdf')
     plt.close(fig)
 
 
@@ -802,6 +914,8 @@ def main():
     penalty_figure(summary)
     entropy_sparsity_figure()
     layer_density_figure()
+    learning_curves_figure()
+    jaccard_figure()
     if '--all' in sys.argv:
         main_table()
         speed_table()

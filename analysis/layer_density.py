@@ -45,7 +45,7 @@ def main():
         for m in plan.methods_for(regime):
             dens = []
             for s in plan.SEEDS + plan.EXTRA_SEEDS:
-                path = os.path.join(ck_dir, plan.cfg(m, sp, s, dataset=d, model=a).run_id() + '.pt')
+                path = os.path.join(ck_dir, plan.regime_cfg(m, regime, s).run_id() + '.pt')
                 if not os.path.exists(path):
                     continue
                 try:

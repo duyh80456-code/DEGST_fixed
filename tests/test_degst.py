@@ -187,6 +187,32 @@ def test_plan_suites_share_runs():
     assert len(keys) == len(set(keys)) == 101 and sum(d != 'results' or r not in c0 for d, r in keys) == 92
     assert [c.seed for c in study] == sorted(c.seed for c in study)   # seed 0 of every cell first
     assert not c0 & {c.run_id() for c in plan.suite('c0_uniform')}
+    # Tiny ImageNet: 10 runs, seed-major, 100 epochs with the loop matched to CIFAR in iterations
+    tin = plan.suite('regimes_tin')
+    assert len(tin) == 10 and [c.seed for c in tin] == sorted(c.seed for c in tin)
+    assert all(c.epochs == 100 for c in tin)
+    assert all((c.warmup_epochs, c.end_epoch) == (5, 75) for c in tin if c.method != 'dense')
+    ck = [c for c in tin if c.checkpoint_epochs]
+    assert len(ck) == 1 and ck[0].checkpoint_epochs == (25, 50)
+    # the tables look runs up with the same configs as the runner (same run ids)
+    assert {c.run_id() for c in tin} == ({plan.regime_cfg(m, plan.TIN_REGIME, s).run_id()
+                                          for m in plan.TIN_METHODS for s in plan.SEEDS}
+                                         | {plan.dense_cfg('tinyimagenet', 'resnet18', 0).run_id()})
+    # CIFAR run ids unchanged by the Tiny ImageNet recipe
+    assert plan.dense_cfg('cifar10', 'resnet18', 0).run_id() == 'cifar10_resnet18_dense_s0_seed0'
+    assert plan.regime_cfg('degst_magnitude', plan.TIN_REGIME, 0).run_id().endswith('_c8231824')
+
+
+def test_runner_and_train_agree_on_run_ids():
+    """The run id the plan expects (done(), aggregate.py) equals the one train.py writes from the CLI."""
+    import train
+    from experiments import plan
+    for name in ('c0', 'study', 'regimes_tin', 'criteria'):
+        for c in plan.suite(name):
+            args = vars(train._parser().parse_args(plan.command(c)[2:]))
+            method = args.pop('method')
+            args.pop('device'), args.pop('skip_existing')
+            assert make_config(method, **args).run_id() == c.run_id(), (name, c.run_id())
     a = make_config('degst_magnitude', sparsity=0.9, seed=0)
     b = make_config('degst_magnitude', sparsity=0.9, seed=0, checkpoint_epochs=(50, 100), eval_every=1)
     assert a.run_id() == b.run_id() and '--checkpoint-epochs' in plan.command(plan.suite('midckpt')[0])

@@ -148,3 +148,30 @@ from epoch 1).
   far; within-regime ρ and cluster ranges are stored in `divergence.json` (`post_hoc`).
   Note: with uniform allocation, B ends at 90.17–90.33 % measured sparsity (weights regrown where the
   gradient is exactly zero stay zero); stated in `allocation.tex`.
+- 2026-09-30: **Tiny ImageNet, reduced** (decided before any Tiny ImageNet run; motivated only by GPU
+  budget). `regimes_tin` = |w|, H, random × seeds 0–2 on ResNet-18 at 90 %, + dense (1 seed): 10 runs,
+  seed-major. The |w| seed-0 run saves mid-training checkpoints (epochs 50, 100) for the overlap
+  replay. It tests H0, H1 and the (post hoc) H-vs-random comparison at a larger scale; H·|w| and the
+  extra seeds are not run, so H2 is not tested on Tiny ImageNet. All 10 runs are completed and reported
+  whatever their outcome; the two comparisons join the Holm family of `regimes.tex` (as the design
+  foresaw for this regime), so the adjusted p-values of the other regimes will change slightly.
+- 2026-09-30: **Tiny ImageNet recipe matched in iterations** (decided after one epoch of the dense
+  run had shown 48.8 s/epoch, before any sparse Tiny ImageNet result; that dense run was stopped and
+  is not used). Tiny ImageNet has 781 iterations per epoch against 390 on CIFAR, so all epoch counts
+  are halved: 100 epochs, warm-up 5, T_end 75, mid-training checkpoints at epochs 25 and 50 (`TIN_RECIPE`
+  in `experiments/plan.py`); the dense reference also trains 100 epochs. In iterations the loop is the
+  same as on CIFAR: ~78k SGD steps, warm-up ~3.9k, T_end ~58.6k, ~136 topology updates at ΔT = 400,
+  update fraction 16.2 % / 5.7 % at the two checkpoints. Batch size, learning rate and every other
+  setting are unchanged. Cost ≈ 1.4 h per run, ≈ 14 h for the 10 runs.
+- 2026-10-01: **Tiny ImageNet results.** All 10 runs finished (137 topology updates each, sparsity
+  exactly 90 %). |w| 63.80 ± 0.13, H 55.00 (−8.80 pp, p_Holm 0.003), random 61.47 (−2.33 pp, CI
+  [−3.63, −1.02], p_Holm 0.15), dense 65.62 (1 seed); H − random −6.47 pp (p_Holm 0.001). With the two
+  new comparisons in the Holm family the adjusted p-values of the CIFAR regimes moved slightly (e.g. H on
+  CIFAR-10 90 %: 0.041 → 0.045); no conclusion changed. H4: ρ = −0.63 over 20 points (p = 0.003).
+  Bug fixed: train.py parsed `--end-epoch 75` as 75.0 while the plan kept 75, so the run ids differed
+  (`c8231824` vs `aa812d96`) and the tables could not find the runs; `make_config` now casts ints given
+  for float fields, and a test checks that plan and train.py agree on every run id. No run was retrained.
+- 2026-10-01: **post hoc figures**: learning curves (train accuracy every epoch, test every 10 epochs;
+  `learning_curves.pdf`, `results/learning_curves.json`), which show that H alone underfits in the four
+  harder regimes, and the full Jaccard matrix of the main regimes (`jaccard_matrix.pdf`); plus a TikZ
+  overview of the design in the paper. No new runs.

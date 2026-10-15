@@ -140,12 +140,17 @@ METHODS = {
 def make_config(method: str, **kw) -> RunConfig:
     if method not in METHODS:
         raise KeyError(f'unknown method {method}; choose from {sorted(METHODS)}')
-    fields = {f.name for f in dataclasses.fields(RunConfig)}
+    types = {f.name: f.type for f in dataclasses.fields(RunConfig)}
+    fields = set(types)
     base = dict(METHODS[method])
     user = {k: v for k, v in kw.items() if v is not None}
     bad = set(user) - fields
     if bad:
         raise KeyError(f'unknown config fields {bad}')
+    # same value, same run id: train.py parses float fields as floats (--end-epoch 75 -> 75.0), so an int
+    # given for a float field (end_epoch=75 in experiments/plan.py) must hash the same way
+    user = {k: float(v) if types[k] in (float, 'float') and isinstance(v, int) and not isinstance(v, bool) else v
+            for k, v in user.items()}
     identity = {'dataset', 'model', 'sparsity', 'seed', 'data_root', 'num_workers', 'out_dir',
                 'save_checkpoint', 'checkpoint_epochs', 'tag', 'speed_batches', 'speed_warmup', 'speed_iters',
                 'val_size', 'eval_every'}
