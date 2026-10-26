@@ -299,13 +299,18 @@ ALPHA = 0.05
 def crit_key(method):
     """Criterion id of a study method; the robust-entropy variant gets its own id."""
     spec = METHODS[method]
+    if spec['criterion'] == 'composite':
+        return 'composite_' + spec.get('composite_signal', 'energy')
     return spec['criterion'] + ('_robust' if spec.get('entropy_estimator') == 'robust' else '')
 
 
 CRIT_NAMES = {'magnitude': '$|w|$', 'entropy': '$H(A)$', 'entropy_magnitude': '$H(A)\\cdot|w|$',
               'entropy_magnitude_robust': '$H_{\\mathrm{rob}}(A)\\cdot|w|$ (exploratory)',
               'taylor': 'Taylor $|wg|$', 'fisher': 'Fisher $(wg)^2/2$', 'gradient': 'Gradient $|g|$',
-              'random': 'Random (control)'}
+              'random': 'Random (control)',
+              'energy_magnitude': '$|w|\\cdot\\sqrt{\\mathbb{E}[a^2]}$ (Wanda-style)',
+              'composite_energy': '$|w|(1+\\beta\\tilde u)$, $\\tilde u$ from $\\sqrt{\\mathbb{E}[a^2]}$',
+              'composite_fisher': '$|w|(1+\\beta\\tilde u)$, $\\tilde u$ from $\\hat F$'}
 STUDY_NOTE = ('Mean $\\pm$ std over the number of seeds given in the last column; $^{*}$ marks single-seed cells '
               '(no std). Accuracy is final-epoch test accuracy.')
 
@@ -511,6 +516,119 @@ def entropy_vs_random_table(summary):
     for key, st in out.items():
         print(f'post hoc H - random {key:24s} {st["diff"]:+.2f} [{st["ci95"][0]:+.2f}, {st["ci95"][1]:+.2f}] '
               f'p_holm={st["p_holm"]:.3g}')
+
+
+# --------------------------------------------------------------------------- phase 2 (validation split)
+def _val_accs(c):
+    r = load(c)
+    return None if r is None else r['final_acc']
+
+
+def _accs(cfgs):
+    return [a for a in (_val_accs(c) for c in cfgs) if a is not None]
+
+
+def screen_table():
+    """Phase-2 screen on the validation split, with the decision rule fixed in DESIGN.md (Phase 2):
+    a score wins if Delta > 0 with a 95% Welch CI above 0 in at least one regime and it is not
+    significantly worse (CI below 0) in the other."""
+    out, rows = {}, []
+    for r in plan.SCREEN_REGIMES:
+        key = regime_key(*r)
+        ref = _accs([plan.screen_cfg('degst_magnitude', r, s) for s in plan.SEEDS])
+        lab = regime_label(*r)
+        rows.append([lab, CRIT_NAMES['magnitude'], ms(ref), '\\emph{reference}', str(len(ref))])
+        for m in plan.SCREEN_METHODS[1:]:
+            accs = _accs([plan.screen_cfg(m, r, s) for s in plan.SEEDS])
+            st = compare_to(ref, accs)
+            name = CRIT_NAMES[crit_key(m)] + (' ($\\beta=0.5$)' if m == 'dst_composite' else '')
+            out.setdefault(m, {})[key] = st
+            rows.append([lab, name, ms(accs),
+                         '--' if st is None else f'{st["diff"]:+.2f} [{st["ci95"][0]:+.2f}, {st["ci95"][1]:+.2f}]',
+                         str(len(accs))])
+    decision = {}
+    for m, per in out.items():
+        sts = [st for st in per.values() if st is not None]
+        complete = len(sts) == len(plan.SCREEN_REGIMES)
+        better = any(st['diff'] > 0 and st['ci95'][0] > 0 for st in sts)
+        worse = any(st['diff'] < 0 and st['ci95'][1] < 0 for st in sts)
+        decision[m] = {'complete': complete, 'wins': complete and better and not worse, 'per_regime': per}
+    with open(os.path.join(plan.RESULTS, 'screen_decision.json'), 'w') as f:
+        json.dump(decision, f, indent=1)
+    write('screen.tex', table(
+        'Phase-2 screen on the validation split (10\\% of the training set held out): activation information '
+        'used through energy instead of entropy. Only the drop score differs within a block.', 'tab:screen',
+        'llccc', 'Regime & Drop score & Val.\\ acc (\\%) & $\\Delta$ vs $|w|$ [95\\% CI] (pp) & Seeds', rows,
+        'Mean $\\pm$ std over seeds; Welch CIs, no multiplicity correction (a screen, not the confirmatory test).'))
+    for m, d in decision.items():
+        print(f'screen {m:16s} complete={d["complete"]} WINS={d["wins"]} ' +
+              ' '.join(f'{k}: {v["diff"]:+.2f} [{v["ci95"][0]:+.2f},{v["ci95"][1]:+.2f}]'
+                       for k, v in d['per_regime'].items() if v))
+    return decision
+
+
+def beta_sweep_figure():
+    """Validation accuracy change of the composite score vs beta, and vs its drop-set divergence from |w|
+    (replayed on the mid-training checkpoints of the |w| runs with analysis/score_overlap.py --phase2)."""
+    import glob
+    res = {}
+    for r in plan.SCREEN_REGIMES:
+        key = regime_key(*r)
+        ref = _accs([plan.screen_cfg('degst_magnitude', r, s) for s in plan.SEEDS])
+        for b in plan.BETAS:
+            kw = {} if b == 0.5 else {'composite_beta': b}
+            st = compare_to(ref, _accs([plan.screen_cfg('dst_composite', r, s, **kw) for s in plan.SEEDS]))
+            if st is not None:
+                res.setdefault(key, {})[b] = {'diff': st['diff'], 'ci95': st['ci95']}
+    if not res:
+        print('beta_sweep_figure: no beta-sweep runs, skipped')
+        return
+    div = {}
+    for path in glob.glob(os.path.join(plan.RESULTS, 'analysis', 'overlap_*.json')):
+        with open(path) as f:
+            o = json.load(f)
+        key = f'{o.get("dataset")}_{o.get("model")}_s{o.get("sparsity_pct")}'
+        for b in plan.BETAS:
+            j = o['summary']['jaccard']['magnitude'].get(f'composite_energy_b{b:g}')
+            if j is not None and o.get('epoch') is not None:
+                div.setdefault(key, {}).setdefault(b, []).append(1 - j)
+    # H8: an interior maximum of validation accuracy over beta whose CI lies above zero
+    summary = {}
+    for key, per in res.items():
+        best = max(per, key=lambda b: per[b]['diff'])
+        summary[key] = {'best_beta': best, 'best': per[best], 'interior': best not in (min(plan.BETAS), max(plan.BETAS)),
+                        'h8': best != max(plan.BETAS) and per[best]['ci95'][0] > 0,
+                        'divergence': {b: mean(v) for b, v in div.get(key, {}).items()}, 'per_beta': per}
+    with open(os.path.join(plan.RESULTS, 'beta_sweep.json'), 'w') as f:
+        json.dump(summary, f, indent=1)
+    plt = _plt()
+    fig, axes = plt.subplots(1, 2, figsize=(7.2, 3.0), squeeze=False)
+    for i, (key, per) in enumerate(res.items()):
+        d, a, sp = key.split('_')
+        lab = regime_label(d, a, int(sp[1:]) / 100).replace('\\%', '%')
+        bs = sorted(per)
+        y = [per[b]['diff'] for b in bs]
+        err = [[per[b]['diff'] - per[b]['ci95'][0] for b in bs], [per[b]['ci95'][1] - per[b]['diff'] for b in bs]]
+        axes[0][0].errorbar(bs, y, yerr=err, marker='o', ms=4, capsize=2, lw=1.1, color=f'C{i}', label=lab)
+        if key in div:
+            xs = [mean(div[key][b]) for b in bs if b in div[key]]
+            ys = [per[b]['diff'] for b in bs if b in div[key]]
+            axes[0][1].plot(xs, ys, marker='o', ms=4, lw=1.1, color=f'C{i}', label=lab)
+    axes[0][0].set_xscale('log')
+    axes[0][0].set_xlabel('$\\beta$', fontsize=8)
+    axes[0][1].set_xlabel('drop-set divergence from $|w|$ (1 - Jaccard)', fontsize=8)
+    for ax in axes[0]:
+        ax.axhline(0, color='k', lw=.8)
+        ax.grid(alpha=.3)
+        ax.tick_params(labelsize=7)
+    axes[0][0].set_ylabel('val. accuracy change vs $|w|$ (pp)', fontsize=8)
+    axes[0][0].legend(fontsize=7)
+    fig.tight_layout()
+    _save(fig, 'beta_sweep.pdf')
+    plt.close(fig)
+    for key, s_ in summary.items():
+        print(f'beta sweep {key}: best beta {s_["best_beta"]} diff {s_["best"]["diff"]:+.2f} '
+              f'CI [{s_["best"]["ci95"][0]:+.2f},{s_["best"]["ci95"][1]:+.2f}] H8={s_["h8"]}')
 
 
 # --------------------------------------------------------------------------- figures of the criteria study
@@ -916,6 +1034,9 @@ def main():
     layer_density_figure()
     learning_curves_figure()
     jaccard_figure()
+    if '--phase2' in sys.argv:
+        screen_table()
+        beta_sweep_figure()
     if '--all' in sys.argv:
         main_table()
         speed_table()

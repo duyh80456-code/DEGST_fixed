@@ -102,6 +102,25 @@ MIDCKPT_EPOCHS = (50, 100)
 MIDCKPT_DIR = os.path.join(RESULTS, 'midckpt')
 DENSE_SEEDS = ONE_SEED                         # dense runs are a reference, not a tested arm
 
+# --- phase 2 (experiments/DESIGN.md, "Phase 2"): can activation information beat |w| when used through
+# energy rather than entropy? Selection happens on a validation split held out from the training set,
+# so the test set is not used to choose a score or beta; only `confirm` reports test accuracy.
+SCREEN_REGIMES = (('cifar100', 'resnet18', 0.9), TIN_REGIME)      # largest Dense - |w| gaps (1.95, 1.82 pp)
+SCREEN_METHODS = ('degst_magnitude', 'dst_energy', 'dst_fisher', 'dst_composite')   # |w|, S1, S2, S3 (beta 0.5)
+VAL_SIZE = {'cifar100': 5000, 'tinyimagenet': 10000}                 # 10% of the training set
+BETAS = (0.1, 0.25, 0.5, 1.0, 2.0)                                  # 0.5 is the default of dst_composite
+# filled in after the screen, from the pre-specified decision rule: (method, overrides) pairs, run on the
+# test set in every regime of ALL_REGIMES with SEEDS
+CONFIRM = ()
+
+
+def screen_cfg(method, regime, seed, **kw):
+    """A phase-2 run on the validation split (same loop and recipe as the study, no checkpoints)."""
+    d, a, sp = regime
+    rec = dict(TIN_RECIPE) if regime == TIN_REGIME else {}
+    return cfg(method, sp, seed, dataset=d, model=a, val_size=VAL_SIZE[d], **rec, **kw)
+
+
 # everything of the criteria study except Tiny ImageNet, for one GPU (run seed-major, see suite())
 STUDY = ('midckpt', 'c0_uniform', 'regimes', 'power', 'dense_study')
 
@@ -123,12 +142,21 @@ def regime_cfg(method, regime, seed):
     return cfg(method, sp, seed, dataset=d, model=a, **kw)
 
 
+def regime_cfg_kw(method, regime, seed, overrides):
+    """regime_cfg with extra config overrides (e.g. a composite beta chosen in phase 2)."""
+    d, a, sp = regime
+    kw = dict(TIN_RECIPE) if regime == TIN_REGIME else {}
+    kw.update(overrides)
+    return cfg(method, sp, seed, dataset=d, model=a, **kw)
+
+
 def dense_cfg(dataset, model, seed):
     """Dense reference; trained for the same number of iterations as the sparse runs of its regime."""
     kw = {'epochs': TIN_RECIPE['epochs']} if dataset == TIN_REGIME[0] else {}
     return cfg('dense', 0.0, seed, dataset=dataset, model=model, **kw)
 
 SUITES = ('c0', 'dense', 'study', 'regimes', 'power', 'c0_uniform', 'midckpt', 'dense_study', 'regimes_tin',
+          'screen', 'beta_sweep', 'confirm',
           'main', 'pareto', 'sensitivity', 'ext', 'criteria', 'legacy', 'quick')
 
 
@@ -162,6 +190,16 @@ def suite(name):
         return sorted(out, key=lambda c: c.seed)
     if name == 'dense_study':
         return [dense_cfg(d, a, s) for d, a in dict.fromkeys((d, a) for d, a, _ in REGIMES) for s in DENSE_SEEDS]
+    if name == 'screen':
+        jobs = [screen_cfg(m, r, s) for r in SCREEN_REGIMES for m in SCREEN_METHODS for s in SEEDS]
+        return sorted(jobs, key=lambda c: c.seed)
+    if name == 'beta_sweep':
+        jobs = [screen_cfg('dst_composite', r, s, composite_beta=b)
+                for r in SCREEN_REGIMES for b in BETAS for s in SEEDS]
+        return sorted(jobs, key=lambda c: c.seed)
+    if name == 'confirm':
+        jobs = [regime_cfg_kw(m, r, s, kw) for m, kw in CONFIRM for r in ALL_REGIMES for s in SEEDS]
+        return sorted(jobs, key=lambda c: c.seed)
     if name == 'regimes':
         return [regime_cfg(m, r, s) for r in REGIMES for m in methods_for(r) for s in SEEDS]
     if name == 'power':

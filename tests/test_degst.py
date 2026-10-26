@@ -127,7 +127,12 @@ def test_score_overlap_diagnostics():
     sc, stats, pos = collect(m, data, 'cpu', entropy_batches=1)
     assert set(sc) == {'magnitude', 'entropy', 'entropy_magnitude', 'entropy_magnitude_robust', 'taylor',
                        'fisher', 'gradient', 'random'}
-    assert set(stats) == {'H', 'H_robust', 'zero'}
+    assert set(stats) == {'H', 'H_robust', 'zero', 'energy'}
+    # phase-2 criteria replay as well (S1 and the composite at one beta)
+    sc2, stats2, _ = collect(m, data, 'cpu', criteria=('magnitude', 'energy_magnitude', 'composite_energy_b0.5'),
+                             entropy_batches=1)
+    assert set(sc2) == {'magnitude', 'energy_magnitude', 'composite_energy_b0.5'}
+    assert all((sc2['composite_energy_b0.5'][n] >= sc2['magnitude'][n]).all() for n in sc2['magnitude'])
     rows, s = compare_drop_sets(m, sc, stats, masks=mm.masks, fraction=0.2, positions=pos)
     assert all(abs(s['jaccard'][c][c] - 1.0) < 1e-9 for c in sc) and 0 < s['flops_dropped_pct']['magnitude'] < 100
     assert 'spearman_H_zero_pooled' in s and 0 <= rows[1]['zero_share'] <= 1
@@ -158,6 +163,56 @@ def test_random_criterion_and_robust_entropy():
     h, hr = channel_entropy(x, 30), channel_entropy_robust(x, 30)
     assert abs(hr[0].item()) < 1e-6
     assert hr[1] > h[1] + 0.5 and hr[2] > h[2] + 2 and hr[2] > math.log(30) - 0.3   # zeros / outlier removed
+
+
+def test_phase2_criteria():
+    """S1 = |w| sqrt(E[a^2]); S3 = |w| (1 + beta u) with u in [0, 1] per layer; beta = 0 is exactly |w|."""
+    from degst.criteria import ScoreState
+    from degst.entropy import channel_energy
+    torch.manual_seed(0)
+    x = torch.randn(4, 3, 5, 5)
+    assert torch.allclose(channel_energy(x), (x ** 2).mean(dim=(0, 2, 3)))
+    m = build_model('resnet18', 10)
+    layers = MaskManager(m).layers
+    energy = {n: torch.rand(l.weight.shape[1]) + 0.1 for n, l in layers.items()}
+    mag = ScoreState(layers, 'magnitude').scores()
+    c0 = ScoreState(layers, 'composite', beta=0.0, signal='energy').scores(energy)
+    assert all(torch.equal(mag[n], c0[n]) for n in layers)
+    c = ScoreState(layers, 'composite', beta=0.5, signal='energy').scores(energy)
+    assert all(((c[n] >= mag[n]) & (c[n] <= 1.5 * mag[n] + 1e-7)).all() for n in layers)
+    n0 = next(iter(layers))                                   # conv1: weight [64, 3, 3, 3]
+    s1 = ScoreState(layers, 'energy_magnitude').scores(energy)
+    assert torch.allclose(s1[n0], mag[n0] * energy[n0].sqrt().view(1, -1, 1, 1))
+    assert ScoreState(layers, 'composite', signal='energy').activation_stat == 'energy'
+    assert ScoreState(layers, 'energy_magnitude').activation_stat == 'energy'
+    fis = ScoreState(layers, 'composite', beta=1.0, signal='fisher')
+    assert fis.activation_stat is None and fis.accumulates
+    for l in layers.values():
+        l.weight.grad = torch.full_like(l.weight, 2.0)
+    fis.accumulate()
+    fis.accumulate()
+    assert all(torch.equal(v, mag[n]) for n, v in fis.scores().items())   # constant signal -> u = 0 -> |w|
+    fis.reset()
+    assert fis.count == 0
+    try:
+        ScoreState(layers, 'composite', signal='entropy')
+        raise AssertionError('unknown composite signal accepted')
+    except ValueError:
+        pass
+    # S2 is the existing 'fisher' criterion: it already carries the w^2 factor
+    f = ScoreState(layers, 'fisher')
+    f.accumulate()
+    assert torch.allclose(f.scores()[n0], 0.5 * (m.conv1.weight.detach() * 2.0) ** 2)
+
+
+def test_phase2_suites():
+    from experiments import plan
+    screen, sweep = plan.suite('screen'), plan.suite('beta_sweep')
+    assert len(screen) == 24 and len(sweep) == 30 and plan.suite('confirm') == []
+    assert len({c.run_id() for c in screen} & {c.run_id() for c in sweep}) == 6      # beta 0.5 is shared
+    assert all(c.val_size == plan.VAL_SIZE[c.dataset] for c in screen + sweep)        # selection on validation
+    assert all(c.epochs == 100 for c in screen if c.dataset == 'tinyimagenet')
+    assert not {c.run_id() for c in screen} & {c.run_id() for c in plan.suite('regimes')}   # no test-set runs reused
 
 
 def test_statistics():

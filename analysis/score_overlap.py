@@ -35,13 +35,29 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from degst.criteria import ScoreState  # noqa: E402
 from degst.data import get_loaders  # noqa: E402
-from degst.entropy import channel_entropy, channel_entropy_robust  # noqa: E402
+from degst.entropy import channel_energy, channel_entropy, channel_entropy_robust  # noqa: E402
 from degst.sparse import MaskManager, _bottom_k, prunable_layers  # noqa: E402
 
 CRITERIA = ('magnitude', 'entropy', 'entropy_magnitude', 'entropy_magnitude_robust', 'taylor', 'fisher',
             'gradient', 'random')
+# phase 2: S1 (Wanda's score) and S3 (magnitude-anchored composite) at every beta of the sweep;
+# composite names are 'composite_<signal>_b<beta>', e.g. 'composite_energy_b0.5'
+PHASE2_CRITERIA = ('energy_magnitude',) + tuple(f'composite_energy_b{b:g}' for b in (0.1, 0.25, 0.5, 1.0, 2.0))
 SHORT = {'magnitude': '|w|', 'entropy': 'H', 'entropy_magnitude': 'H|w|', 'entropy_magnitude_robust': 'Hr|w|',
-         'taylor': 'Taylor', 'fisher': 'Fisher', 'gradient': '|g|', 'random': 'rand'}
+         'taylor': 'Taylor', 'fisher': 'Fisher', 'gradient': '|g|', 'random': 'rand', 'energy_magnitude': 'E|w|'}
+
+
+def short(c):
+    m = re.match(r'composite_(\w+?)_b([\d.]+)$', c)
+    return f'C{m.group(1)[0]}{m.group(2)}' if m else SHORT[c]
+
+
+def make_state(layers, c, seed):
+    """ScoreState for a criterion name of this script (robust entropy and composite names included)."""
+    m = re.match(r'composite_(\w+?)_b([\d.]+)$', c)
+    if m:
+        return ScoreState(layers, 'composite', seed=seed, beta=float(m.group(2)), signal=m.group(1))
+    return ScoreState(layers, 'entropy_magnitude' if c == 'entropy_magnitude_robust' else c, seed=seed)
 REFERENCE = 'magnitude'
 DEFAULTS = {'swap_fraction': 0.2, 'entropy_batches': 4, 'update_interval': 400}
 
@@ -73,7 +89,7 @@ def collect(model: nn.Module, batches, device, criteria=CRITERIA, bins=30, amp=T
     positions {layer: int}).
     """
     layers = prunable_layers(model)
-    bufs = {k: {n: [] for n in layers} for k in ('H', 'H_robust', 'zero')}
+    bufs = {k: {n: [] for n in layers} for k in ('H', 'H_robust', 'zero', 'energy')}
     positions, handles, rec = {}, [], {'on': True}
 
     def pre(n):
@@ -82,6 +98,7 @@ def collect(model: nn.Module, batches, device, criteria=CRITERIA, bins=30, amp=T
                 x = inp[0]
                 bufs['H'][n].append(channel_entropy(x, bins))
                 bufs['H_robust'][n].append(channel_entropy_robust(x, bins))
+                bufs['energy'][n].append(channel_energy(x))
                 bufs['zero'][n].append((x.detach() == 0).float().transpose(0, 1).reshape(x.shape[1], -1).mean(1))
         return hook
 
@@ -89,8 +106,7 @@ def collect(model: nn.Module, batches, device, criteria=CRITERIA, bins=30, amp=T
         handles.append(m.register_forward_pre_hook(pre(n)))
         handles.append(m.register_forward_hook(
             lambda _m, _i, out, n=n: positions.__setitem__(n, out.shape[2] * out.shape[3] if out.dim() == 4 else 1)))
-    base = {c: 'entropy_magnitude' if c == 'entropy_magnitude_robust' else c for c in criteria}
-    states = {c: ScoreState(layers, base[c], seed=seed) for c in criteria}
+    states = {c: make_state(layers, c, seed) for c in criteria}
     model.train()
     dev = torch.device(device)
     for i, (x, y) in enumerate(batches):
@@ -105,8 +121,13 @@ def collect(model: nn.Module, batches, device, criteria=CRITERIA, bins=30, amp=T
     for h in handles:
         h.remove()
     stats = {k: {n: torch.stack(v).mean(0) for n, v in b.items() if v} for k, b in bufs.items()}
-    scores = {c: s.scores(stats['H_robust'] if c == 'entropy_magnitude_robust' else stats['H'])
-              for c, s in states.items()}
+
+    def stat_for(c, s):
+        if s.activation_stat == 'energy':
+            return stats['energy']
+        return stats['H_robust'] if c == 'entropy_magnitude_robust' else stats['H']
+
+    scores = {c: s.scores(stat_for(c, s)) for c, s in states.items()}
     model.zero_grad(set_to_none=True)
     return scores, stats, positions
 
@@ -219,18 +240,18 @@ def take(loader, n):
 def _print(name, rows, summary, crits):
     print(f'== {name}: replay dropping {summary["k_dropped"]} weights ({summary["fraction"]:.1%} of active)')
     print(f'{"layer":24s} {"dens":>5s} {"H":>5s} {"H cv":>5s} {"zero":>5s} {"rhoHz":>6s} ' +
-          ' '.join(f'{SHORT[c]:>7s}' for c in crits))
+          ' '.join(f'{short(c):>7s}' for c in crits))
     nan = float('nan')
     for r in rows:
         print(f'{r["layer"]:24s} {r["density"]:5.3f} {r.get("H_mean", nan):5.2f} {r.get("H_cv", nan):5.2f} '
               f'{r.get("zero_share", nan):5.2f} {r.get("spearman_H_zero", nan):6.2f} ' +
               ' '.join(f'{r["drop"][c]:7d}' for c in crits))
     print('Jaccard of drop sets (global):')
-    print(f'{"":8s}' + ''.join(f'{SHORT[c]:>8s}' for c in crits))
+    print(f'{"":8s}' + ''.join(f'{short(c):>8s}' for c in crits))
     for a in crits:
-        print(f'{SHORT[a]:8s}' + ''.join(f'{summary["jaccard"][a][b]:8.3f}' for b in crits))
-    print('within layers vs |w| : ' + ', '.join(f'{SHORT[c]} {v:.3f}' for c, v in summary['jaccard_within_vs_ref'].items()))
-    print('FLOPs dropped (%)    : ' + ', '.join(f'{SHORT[c]} {v:.2f}' for c, v in summary['flops_dropped_pct'].items()))
+        print(f'{short(a):8s}' + ''.join(f'{summary["jaccard"][a][b]:8.3f}' for b in crits))
+    print('within layers vs |w| : ' + ', '.join(f'{short(c)} {v:.3f}' for c, v in summary['jaccard_within_vs_ref'].items()))
+    print('FLOPs dropped (%)    : ' + ', '.join(f'{short(c)} {v:.2f}' for c, v in summary['flops_dropped_pct'].items()))
     if 'spearman_H_zero_pooled' in summary:
         print(f'Spearman(H, share of zeros) over all channels after the first layer: '
               f'{summary["spearman_H_zero_pooled"]:+.2f}')
@@ -241,6 +262,8 @@ def main():
     p.add_argument('checkpoints', nargs='+')
     p.add_argument('--compare', nargs='*', default=[], help='print per-layer density of these next to the first')
     p.add_argument('--criteria', default=','.join(CRITERIA))
+    p.add_argument('--phase2', action='store_true',
+                   help='also replay S1 (energy_magnitude) and S3 (composite) at every beta of the sweep')
     p.add_argument('--dataset', default=None, help='default: taken from the checkpoint name')
     p.add_argument('--data-root', default='./data')
     p.add_argument('--fraction', type=float, default=None, help='default: the loop\'s swap fraction at that step')
@@ -254,7 +277,7 @@ def main():
     p.add_argument('--seed', type=int, default=0)
     p.add_argument('--out-dir', default=os.path.join('results', 'analysis'))
     a = p.parse_args()
-    crits = [c for c in a.criteria.split(',') if c]
+    crits = [c for c in a.criteria.split(',') if c] + (list(PHASE2_CRITERIA) if a.phase2 else [])
     if REFERENCE not in crits:
         crits.insert(0, REFERENCE)
     os.makedirs(a.out_dir, exist_ok=True)

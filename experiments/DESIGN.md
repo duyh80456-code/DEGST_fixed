@@ -106,6 +106,63 @@ python aggregate.py
 The runner skips finished runs, so `study` can be stopped and restarted (the interrupted run restarts
 from epoch 1).
 
+## Phase 2: activation information through energy instead of entropy
+
+Written 2026-10-26, after the study's results and **before any phase-2 run**. Phase 2 is a separate,
+follow-up experiment; its results are reported apart from the confirmatory study above.
+
+**Question.** The study shows that entropy is the wrong way to use activations (it mostly measures
+post-ReLU sparsity). Does activation information help once it is used through its energy, and does a
+score that stays anchored to magnitude beat |w|?
+
+**Step 0 (done before writing this section).**
+- The existing `fisher` criterion is already the OBD form ½·mean_t(g²)·w² (`degst/criteria.py`), so the
+  proposed "S2 = F̂·w²" is not a new configuration; it is run again in the screen only as a known
+  comparison. (Its F̂ uses mini-batch rather than per-sample gradients.)
+- Gap Dense − |w| (dense: 1 seed): CIFAR-100 ResNet-18 90 % +1.95 pp, Tiny ImageNet 90 % +1.82,
+  CIFAR-10 98 % +1.56, CIFAR-10 90 % +0.29, VGG-16 CIFAR-100 −0.01. Regimes with |w| at the ceiling
+  cannot show a gain, so the screen uses the two largest gaps: CIFAR-100 ResNet-18 and Tiny ImageNet.
+
+**Scores.**
+- S1 `dst_energy`: |w|·√E[a²] per input channel. This is the score of Wanda (Sun et al., 2024) applied
+  in a DST loop with global ranking; it is a baseline, not a contribution.
+- S2 `dst_fisher`: the existing Fisher criterion (see above).
+- S3 `dst_composite`: |w|·(1 + β·ũ), ũ = √E[a²] min-max normalised to [0, 1] within each layer;
+  β = 0 is |w|. Default β = 0.5.
+
+**Where.** All selection (screen and β sweep) uses a validation split held out from the training set
+(5k images on CIFAR-100, 10k on Tiny ImageNet; `--val-size`), never the test set. Same loop, recipe,
+seeds 0–2 and (on Tiny ImageNet) the 100-epoch iteration-matched recipe as the study.
+
+**Hypotheses.**
+- H6: S1 beats |w| by the screen rule below.
+- H7: S3 with β = 0.5 beats |w| by the screen rule below.
+- H8: over β ∈ {0.1, 0.25, 0.5, 1, 2}, validation accuracy is highest at some β < 2 whose difference to
+  |w| has a 95 % CI above zero (a peak at small, non-zero divergence from |w|).
+
+**Screen rule (fixed now).** A score wins if, on the validation split, Δ = acc − acc(|w|) > 0 with a
+95 % Welch CI (3 seeds) excluding zero in at least one screen regime, and it is not significantly worse
+(CI below zero) in the other. This is a screen without multiplicity correction; it decides only what
+goes into the confirmatory step.
+
+**Stop rule.** If no score wins the screen, phase 2 stops: no further scores or β values are tried, and
+the paper reports the negative screen ("even through energy, activation information does not beat |w|
+in this DST loop"). The β sweep runs only if S3 wins or is within its CI of winning in both regimes
+(Δ > 0 in both); β is then chosen as the validation argmax and fixed before the confirmatory step.
+
+**Confirmatory step.** The winning score(s) (at most two, with the β chosen on validation) are run on
+the test set in all five regimes, 3 seeds (`CONFIRM` in `experiments/plan.py`, suite `confirm`), and
+analysed with the study's framework: Welch CIs, Holm over the new comparisons, TOST with the same
+margins (±0.3 pp on CIFAR-10, ±0.5 pp on CIFAR-100 and Tiny ImageNet).
+
+**Corrections to the proposal this section is based on.** (1) S2 already exists (above). (2) The
+equivalence margins are ±0.3 / ±0.5 pp; 0.31 pp was the C0 threshold, not a margin. (3) The proposal
+screened on the test set and then confirmed on the same test set; here the screen and the β choice use
+a validation split, so the test set enters only the confirmatory step.
+
+**Cost (RTX 3090, estimates).** Screen: 24 runs, ≈ 18 h (CIFAR-100 ≈ 4 h, Tiny ImageNet ≈ 14 h).
+β sweep: 24 new runs, ≈ 18 h. Confirmatory: ≈ 9 h per winning score.
+
 ## Changelog
 
 - 2026-09-28: design written after C0 and the overlap diagnostics.

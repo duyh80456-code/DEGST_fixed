@@ -50,6 +50,12 @@ pip install scipy                            # aggregate.py: Welch CIs, TOST, Ho
 python -m experiments.plan run study         # one GPU, 92 runs ~34 h, seed 0 of every cell first (~10 h)
 python -m experiments.plan run regimes_tin   # Tiny ImageNet 90%: |w|, H, random x 3 seeds + dense, 100 epochs (10 runs, ~14 h)
 python analysis/score_overlap.py results/checkpoints/*_ep*.pt results/midckpt/checkpoints/*_ep*.pt
+
+# phase 2 (experiments/DESIGN.md, "Phase 2"): energy-based scores, selected on a validation split
+python -m experiments.plan run screen        # |w|, S1 (Wanda-style), S2 (Fisher), S3 (composite) x 2 regimes x 3 seeds
+python aggregate.py --phase2                 # screen.tex, screen_decision.json (pre-specified win/stop rule)
+python -m experiments.plan run beta_sweep    # only if the stop rule allows it
+python analysis/score_overlap.py --phase2 results/checkpoints/cifar100_*_ep*.pt results/checkpoints/tinyimagenet_*_ep*.pt
 python aggregate.py            # + paper/tables/regimes.tex, allocation.tex, Figures/divergence_accuracy.pdf
 ```
 

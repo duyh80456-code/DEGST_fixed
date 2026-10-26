@@ -47,6 +47,9 @@ class RunConfig:
     entropy_reduction: str = 'mean'  # mean | median over those batches
     entropy_max_samples: int = 0     # per-channel subsample (0 = all values)
     entropy_estimator: str = 'histogram'  # histogram (C0) | robust (non-zero values, quantile range)
+    # magnitude-anchored composite score |w| * (1 + beta * u) (criterion 'composite')
+    composite_beta: float = 0.5
+    composite_signal: str = 'energy'      # energy (sqrt E[a^2] per input channel) | fisher (mean_t g^2)
     # structured
     channel_criterion: str = 'entropy'   # entropy | bn_gamma | fpgm | l1 | learned
     channel_schedule: str = 'gradual'    # gradual | oneshot
@@ -100,6 +103,10 @@ METHODS = {
     # exploratory (added after the C0 diagnostics, before the study's results): DEGST with an entropy
     # estimate that ignores exact zeros and outliers (degst/entropy.py: channel_entropy_robust)
     'degst_robust': dict(kind='dst', criterion='entropy_magnitude', entropy_estimator='robust'),
+    # phase 2 (experiments/DESIGN.md, "Phase 2"): activation information used through energy, not entropy
+    'dst_energy': dict(kind='dst', criterion='energy_magnitude'),                # S1, Wanda's score (Sun et al.)
+    'dst_composite': dict(kind='dst', criterion='composite', composite_signal='energy'),        # S3
+    'dst_composite_fisher': dict(kind='dst', criterion='composite', composite_signal='fisher'),  # S3, Fisher signal
 
     # --- unstructured baselines, each with its original paper's conventions
     'rigl': dict(kind='dst', criterion='magnitude', allocation='erk', init='random', warmup_epochs=0,

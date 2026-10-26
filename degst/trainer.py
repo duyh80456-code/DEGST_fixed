@@ -20,7 +20,7 @@ import torch.nn.functional as F
 
 from . import metrics
 from .config import RunConfig
-from .criteria import NEEDS_ENTROPY, ScoreState, grad_scores
+from .criteria import ScoreState, grad_scores
 from .data import IMAGE_SIZE, NUM_CLASSES, get_loaders
 from .entropy import EntropyTracker
 from .models import build_model
@@ -164,10 +164,13 @@ class Run:
     def _init_unstructured(self):
         c = self.cfg
         self.mm = MaskManager(self.model, c.allocation, c.min_density)
-        self.scores = ScoreState(self.mm.layers, c.criterion, seed=c.seed)
-        if c.criterion in NEEDS_ENTROPY and self.tracker is None:
+        self.scores = ScoreState(self.mm.layers, c.criterion, seed=c.seed, beta=c.composite_beta,
+                                 signal=c.composite_signal)
+        stat = self.scores.activation_stat
+        if stat is not None and self.tracker is None:
             self.tracker = EntropyTracker(self.mm.layers, 'input', c.bins, c.entropy_reduction,
-                                          c.entropy_max_samples, estimator=c.entropy_estimator)
+                                          c.entropy_max_samples,
+                                          estimator=c.entropy_estimator if stat == 'entropy' else 'energy')
 
     # ------------------------------------------------------------------ schedule helpers
     def lr_at(self, t):

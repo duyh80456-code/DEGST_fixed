@@ -58,11 +58,23 @@ def channel_entropy_robust(x: torch.Tensor, bins: int = 30, eps: float = 1e-8, m
     return -(p * torch.log(p + eps)).sum(1)
 
 
-ESTIMATORS = {'histogram': channel_entropy, 'robust': channel_entropy_robust}
+@torch.no_grad()
+def channel_energy(x: torch.Tensor, *_args, **_kw) -> torch.Tensor:
+    """Mean squared activation E[a^2] of each channel (dim 1) of ``x``; float tensor of shape [C].
+
+    The square root of this, times |w|, is the per-weight score of Wanda (Sun et al., 2024), here
+    per input channel and averaged over the recorded batches.
+    """
+    c = x.shape[1]
+    return x.detach().float().transpose(0, 1).reshape(c, -1).pow(2).mean(1)
+
+
+ESTIMATORS = {'histogram': channel_entropy, 'robust': channel_entropy_robust, 'energy': channel_energy}
 
 
 class EntropyTracker:
-    """Records per-channel entropy of module inputs (``mode='input'``) or outputs.
+    """Records a per-channel statistic of module inputs (``mode='input'``) or outputs: the histogram
+    entropy (``estimator='histogram'`` or ``'robust'``) or the mean squared activation (``'energy'``).
 
     Collection is off by default; the trainer switches it on for the last
     ``n_batches`` training steps before each topology update, so no extra forward
@@ -95,6 +107,8 @@ class EntropyTracker:
         t0 = time.perf_counter()
         if self.estimator == 'robust':
             h = channel_entropy_robust(x, self.bins, max_samples=self.max_samples or 4096)
+        elif self.estimator == 'energy':
+            h = channel_energy(x)
         else:
             h = channel_entropy(x, self.bins, max_samples=self.max_samples)
         self.buf[name].append(h)
